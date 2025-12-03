@@ -18,13 +18,15 @@ urlpatterns = [
     path('projects/', views.projects, name='projects'),
     
     # Create project
-    path('create-project/', views.create_project, name='create_project'),
+    path('project/create/', views.create_project, name='create_project'),
 
     # Kanban API endpoints
     path('api/kanban-tasks/', views.kanban_tasks_api, name='kanban_tasks_api'),
     path('api/kanban-tasks/<int:task_id>/', views.kanban_task_detail_api, name='kanban_task_detail_api'),
     path('api/projects/', views.projects_api, name='projects_api'),
     path('api/developers/', views.developers_api, name='developers_api'),
+
+    path('project/<int:project_id>/timeline/', views.project_timeline, name='project_timeline'),
 
     # Matches any html file
     re_path(r'^.*\.*', views.pages, name='pages'),
