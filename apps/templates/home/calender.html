@@ -1,0 +1,205 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %} Icons {% endblock title %}
+
+<!-- Specific CSS goes HERE -->
+{% block stylesheets %}
+<style>
+  .calendar-top-bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+  .btn-new-calendar {
+    background-color: #007bff;
+    color: #fff;
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: none;
+    font-weight:600;
+    cursor: pointer;
+  }
+  .btn-new-calendar:hover { background-color: #0069d9; }
+
+  .calendar-container { min-height:480px; display:flex; align-items:stretch; }
+  .calendar-placeholder { flex:1; display:flex; align-items:center; justify-content:center; color:#666; border:2px dashed #e9ecef; border-radius:8px; padding:30px; }
+  .calendar-iframe { width:100%; height:600px; border:0; border-radius:8px; overflow:hidden; }
+
+  /* Modal overlay similar to kanban */
+  .overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:999; align-items:center; justify-content:center; }
+  .overlay.active { display:flex; }
+  .modal-content { background:#fff; padding:24px; border-radius:8px; width:94%; max-width:620px; box-shadow:0 6px 30px rgba(0,0,0,0.2); }
+  .modal-header { font-size:18px; font-weight:700; margin-bottom:12px; }
+  .form-group { margin-bottom:12px; }
+  .form-group label { font-weight:600; display:block; margin-bottom:6px; }
+  .form-group input { width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; }
+  .modal-buttons { display:flex; gap:10px; justify-content:flex-end; margin-top:12px; }
+  .btn-save { background:#28a745; color:#fff; padding:8px 12px; border-radius:6px; border:none; cursor:pointer; }
+  .btn-cancel { background:#e9ecef; color:#333; padding:8px 12px; border-radius:6px; border:none; cursor:pointer; }
+  .error-message { color:#dc3545; font-size:13px; display:none; margin-top:6px; }
+  .error-message.active { display:block; }
+</style>
+{% endblock stylesheets %}
+
+{% block content %}
+
+    <!-- Header -->
+    <div class="header bg-gradient-primary pb-8 pt-5 pt-md-8">
+<script src="/static/assets/vendor/clipboard/dist/clipboard.min.js"></script>
+
+<!-- Calendar modal overlay -->
+<div class="overlay" id="calendarOverlay">
+  <div class="modal-content">
+    <div class="modal-header">Add Google Calendar Embed</div>
+    <div>
+      <div class="form-group">
+        <label for="calendarLink">Google Calendar embed URL or iframe src</label>
+        <input type="text" id="calendarLink" placeholder="e.g. https://calendar.google.com/calendar/embed?src=...">
+        <div class="error-message" id="calendarError">Please enter a valid URL.</div>
+      </div>
+      <div class="form-group">
+        <label for="calendarTitle">Optional title (shown when no calendar)</label>
+        <input type="text" id="calendarTitle" placeholder="My Team Calendar">
+      </div>
+      <div class="modal-buttons">
+        <button type="button" class="btn-cancel" onclick="closeCalendarModal()">Cancel</button>
+        <button type="button" class="btn-save" onclick="saveCalendar()">Save</button>
+      </div>
+      <div style="margin-top:8px; display:flex; gap:8px; justify-content:flex-end;">
+        <button type="button" class="btn-cancel" onclick="removeCalendar()">Remove Calendar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Key used in localStorage
+  const CAL_KEY = 'planny_user_calendar_src';
+  const CAL_TITLE_KEY = 'planny_user_calendar_title';
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadCalendar();
+    // close overlay when clicking outside modal
+    document.getElementById('calendarOverlay').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) closeCalendarModal();
+    });
+  });
+
+  function openCalendarModal() {
+    const overlay = document.getElementById('calendarOverlay');
+    const input = document.getElementById('calendarLink');
+    const titleInput = document.getElementById('calendarTitle');
+    const saved = localStorage.getItem(CAL_KEY);
+    const savedTitle = localStorage.getItem(CAL_TITLE_KEY);
+    input.value = saved || '';
+    titleInput.value = savedTitle || '';
+    document.getElementById('calendarError').classList.remove('active');
+    overlay.classList.add('active');
+  }
+
+  function closeCalendarModal() {
+    document.getElementById('calendarOverlay').classList.remove('active');
+  }
+
+  function saveCalendar() {
+    const input = document.getElementById('calendarLink').value.trim();
+    const title = document.getElementById('calendarTitle').value.trim();
+    const err = document.getElementById('calendarError');
+    err.classList.remove('active');
+
+    if (!input) {
+      err.textContent = 'Please enter a calendar URL or iframe src.';
+      err.classList.add('active');
+      return;
+    }
+
+    // Basic validation: must look like a URL
+    try {
+      const url = new URL(input);
+      // Accept any URL, but suggest Google Calendar embeds
+      localStorage.setItem(CAL_KEY, input);
+      localStorage.setItem(CAL_TITLE_KEY, title);
+      closeCalendarModal();
+      loadCalendar();
+    } catch (e) {
+      // Might be an iframe snippet - attempt to extract src
+      const srcMatch = input.match(/src\s*=\s*"([^"]+)"/i);
+      if (srcMatch && srcMatch[1]) {
+        localStorage.setItem(CAL_KEY, srcMatch[1]);
+        localStorage.setItem(CAL_TITLE_KEY, title);
+        closeCalendarModal();
+        loadCalendar();
+        return;
+      }
+      err.textContent = 'Invalid URL or iframe. Provide a full URL or iframe snippet.';
+      err.classList.add('active');
+    }
+  }
+
+  function removeCalendar() {
+    localStorage.removeItem(CAL_KEY);
+    localStorage.removeItem(CAL_TITLE_KEY);
+    closeCalendarModal();
+    loadCalendar();
+  }
+
+  function loadCalendar() {
+    const src = localStorage.getItem(CAL_KEY);
+    const title = localStorage.getItem(CAL_TITLE_KEY) || '';
+    const area = document.getElementById('calendarArea');
+    area.innerHTML = '';
+
+    if (!src) {
+      area.className = 'calendar-placeholder';
+      area.textContent = title ? title : 'No calendar configured. Click "Add Calendar" to paste a Google Calendar embed link.';
+      return;
+    }
+
+    // Ensure the src is suitable for iframe
+    const iframe = document.createElement('iframe');
+    iframe.className = 'calendar-iframe';
+    iframe.loading = 'lazy';
+    iframe.referrerPolicy = 'no-referrer-when-downgrade';
+    iframe.src = src;
+    iframe.setAttribute('aria-label', 'User calendar');
+
+    area.className = '';
+    area.appendChild(iframe);
+  }
+</script>
+      <div class="container-fluid">
+        <div class="header-body">
+        </div>
+      </div>
+    </div>
+
+   <div class="container-fluid mt--7">
+
+      <div class="row">
+        <div class="col">
+          <div class="card shadow">
+              <div class="card-header bg-transparent">
+                <div class="calendar-top-bar">
+                  <h3 class="mb-0">Calendar</h3>
+                  <button class="btn-new-calendar" onclick="openCalendarModal()">+ Add Calendar</button>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="calendar-container">
+                  <div id="calendarArea" class="calendar-placeholder">
+                    No calendar configured. Click "Add Calendar" to paste a Google Calendar embed link.
+                  </div>
+                </div>
+              </div>
+          </div>
+        </div>
+      </div>
+
+      {% include "includes/footer.html" %}
+
+    </div>
+
+{% endblock content %}
+
+<!-- Specific JS goes HERE --> 
+{% block javascripts %}
+
+<script src="/static/assets/vendor/clipboard/dist/clipboard.min.js"></script>
+
+{% endblock javascripts %}

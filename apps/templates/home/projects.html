@@ -3,7 +3,26 @@
 {% block title %} Icons {% endblock title %}
 
 <!-- Specific CSS goes HERE -->
-{% block stylesheets %}{% endblock stylesheets %}
+{% block stylesheets %}
+<style>
+  /* Reuse kanban new task button styling so the project page matches */
+  .btn-new-task {
+    background-color: #28a745;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: inline-block;
+  }
+  .btn-new-task:hover { background-color: #218838; }
+
+  /* Make the small button fit the toolbar layout */
+  .btn-new-task.btn-sm { padding: 6px 12px; }
+</style>
+{% endblock stylesheets %}
 
 {% block content %}
 
@@ -14,8 +33,7 @@
 
           <div class="row align-items-center py-4">
             <div class="col-lg-6 col-5 text-right">
-              <button class="btn btn-sm btn-neutral" data-toggle="modal" data-target="#newProjectModal">New</button>
-              <a href="#" class="btn btn-sm btn-neutral">Filters</a>
+              <button class="btn-new-task btn-sm" data-toggle="modal" data-target="#newProjectModal">+ New Project</button>
             </div>
           </div>
           <!-- Projects Cards Section -->

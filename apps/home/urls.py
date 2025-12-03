@@ -11,11 +11,20 @@ urlpatterns = [
     # The home page
     path('', views.index, name='home'),
     
+    # Kanban page
+    path('kanban/', views.kanban, name='kanban'),
+    
     # Projects page
     path('projects/', views.projects, name='projects'),
     
     # Create project
     path('create-project/', views.create_project, name='create_project'),
+
+    # Kanban API endpoints
+    path('api/kanban-tasks/', views.kanban_tasks_api, name='kanban_tasks_api'),
+    path('api/kanban-tasks/<int:task_id>/', views.kanban_task_detail_api, name='kanban_task_detail_api'),
+    path('api/projects/', views.projects_api, name='projects_api'),
+    path('api/developers/', views.developers_api, name='developers_api'),
 
     # Matches any html file
     re_path(r'^.*\.*', views.pages, name='pages'),
