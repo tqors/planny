@@ -37,10 +37,12 @@
     <div class="col">
       <div class="card shadow">
         <div class="card-header bg-transparent">
-          <h3 class="mb-0">Gantt Chart</h3>
+          <h3 class="mb-0">Gantt Chart Visualization</h3>
         </div>
         <div class="card-body">
-          <div id="chart_div" style="min-height: 500px;"></div>
+          <div id="chart_div" style="min-height: 500px;">
+             <p class="text-center text-muted mt-5" id="loading_msg">Loading Timeline...</p>
+          </div>
         </div>
       </div>
     </div>
@@ -57,6 +59,17 @@
   google.charts.setOnLoadCallback(drawChart);
 
   function drawChart() {
+    // 1. Get Data from Django
+    var rawData = {{ gantt_data|safe }};
+    
+    // 2. Check if data is empty BEFORE trying to draw
+    if (!rawData || rawData.length === 0) {
+        document.getElementById('chart_div').innerHTML = '<div class="alert alert-warning text-center">No tasks found for this project. Add tasks to generate the timeline.</div>';
+        return;
+    }
+
+    document.getElementById('loading_msg').style.display = 'none';
+
     var data = new google.visualization.DataTable();
     data.addColumn('string', 'Task ID');
     data.addColumn('string', 'Task Name');
@@ -67,17 +80,22 @@
     data.addColumn('number', 'Percent Complete');
     data.addColumn('string', 'Dependencies');
 
-    // Receive data from Django
-    var rawData = {{ gantt_data|safe }};
-    
-    // Convert string dates to JavaScript Date objects
+    // 3. Safer Date Parsing Function
+    // Splits "2024-05-20" into integers to avoid timezone issues with new Date()
+    function parseDate(dateStr) {
+        if (!dateStr) return null;
+        var parts = dateStr.split('-');
+        // Note: Month is 0-indexed in Javascript (0 = Jan, 1 = Feb)
+        return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    }
+
     var rows = rawData.map(function(item) {
         return [
             item[0],                // Task ID
             item[1],                // Task Name
             item[2],                // Resource
-            new Date(item[3]),      // Start Date
-            new Date(item[4]),      // End Date
+            parseDate(item[3]),     // Start Date (Using helper function)
+            parseDate(item[4]),     // End Date (Using helper function)
             item[5],                // Duration
             item[6],                // Percent
             item[7]                 // Dependencies
@@ -86,17 +104,21 @@
 
     data.addRows(rows);
 
+    // Dynamic height based on number of tasks (45px per row + padding)
+    var chartHeight = rows.length * 45 + 50;
+
     var options = {
-      height: rows.length * 45 + 50, // Auto-adjust height based on tasks
+      height: chartHeight,
       gantt: {
         trackHeight: 40,
         barCornerRadius: 4,
+        percentEnabled: true,
         backgroundColor: {
             fill: '#ffffff'
         },
         palette: [
             {
-              "color": "#5e72e4", // Argon Theme Blue
+              "color": "#5e72e4", // Theme Blue
               "dark": "#233dd2",
               "light": "#eef0fc"
             }
