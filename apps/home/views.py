@@ -392,8 +392,101 @@ def project_timeline(request, project_id):
         }
         return render(request, 'home/project_timeline.html', context)
 
-    except Exception as e:
-        print(f"Error: {e}")
+    except Exception:
+        return redirect('projects')
+
+@login_required(login_url="/login/")
+def edit_project(request, project_id):
+    """
+    Edit project details (GET shows form, POST updates)
+    """
+    try:
+        with connection.cursor() as cursor:
+            # Fetch project
+            cursor.execute("""
+                SELECT projectID, projectName, projectType, statusID, startDate, endDate, projectProgress, createdBy, clientID
+                FROM project
+                WHERE projectID = %s
+            """, [project_id])
+            proj = cursor.fetchone()
+
+            if not proj:
+                return redirect('projects')
+
+            # Fetch clients and developers for selects
+            cursor.execute("SELECT clientID, companyName FROM client ORDER BY companyName")
+            clients = cursor.fetchall()
+
+            cursor.execute("SELECT d.developerID, u.firstName, u.lastName FROM developer d LEFT JOIN user u ON d.developerID = u.userID ORDER BY u.firstName, u.lastName")
+            developers = cursor.fetchall()
+
+            # Fetch assigned developers for this project
+            cursor.execute("SELECT developerID FROM projectAssignment WHERE projectID = %s", [project_id])
+            assigned_rows = cursor.fetchall()
+            assigned_ids = [r[0] for r in assigned_rows]
+
+        # Prepare context
+        context = {
+            'segment': 'projects',
+            'project': {
+                'projectID': proj[0],
+                'projectName': proj[1],
+                'projectType': proj[2] if len(proj) > 2 else '',
+                'statusID': proj[3],
+                'startDate': proj[4],
+                'endDate': proj[5],
+                'projectProgress': proj[6]
+            },
+            'clients': [{'clientID': c[0], 'companyName': c[1]} for c in clients],
+            'developers': [{'developerID': d[0], 'firstName': d[1] or '', 'lastName': d[2] or ''} for d in developers],
+            'assigned_ids': assigned_ids
+        }
+
+        if request.method == 'POST':
+            # Read form fields
+            project_name = request.POST.get('projectName', '').strip()
+            project_type = request.POST.get('projectType', '').strip()
+            client_id = request.POST.get('client') or None
+            start_date_str = request.POST.get('startDate')
+            end_date_str = request.POST.get('deadline')
+            developer_ids = request.POST.getlist('developers')
+            main_features = request.POST.get('mainFeatures', '').strip()
+
+            # Basic validation
+            if not project_name or not start_date_str or not end_date_str:
+                context['error'] = 'Project name and dates are required.'
+                return render(request, 'home/project_edit.html', context)
+
+            try:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+            except Exception:
+                context['error'] = 'Invalid date format.'
+                return render(request, 'home/project_edit.html', context)
+
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE project SET projectName=%s, projectType=%s, startDate=%s, endDate=%s, clientID=%s
+                        WHERE projectID = %s
+                    """, [project_name, project_type, start_date, end_date, client_id, project_id])
+
+                    # Update project assignments: remove existing and add new
+                    cursor.execute("DELETE FROM projectAssignment WHERE projectID = %s", [project_id])
+                    for dev_id in developer_ids:
+                        try:
+                            cursor.execute("INSERT INTO projectAssignment (projectID, developerID, roleInProject) VALUES (%s, %s, %s)", [project_id, dev_id, 'Developer'])
+                        except Exception:
+                            # ignore individual insert errors
+                            pass
+
+                return redirect('projects')
+            except Exception as e:
+                context['error'] = str(e)
+                return render(request, 'home/project_edit.html', context)
+
+        return render(request, 'home/project_edit.html', context)
+    except Exception:
         return redirect('projects')
 
 @login_required(login_url="/login/")

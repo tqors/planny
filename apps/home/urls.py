@@ -28,6 +28,7 @@ urlpatterns = [
     path('api/calendar-event/', views.calendar_event_api, name='calendar_event_api'),
 
     path('project/<int:project_id>/timeline/', views.project_timeline, name='project_timeline'),
+    path('project/<int:project_id>/edit/', views.edit_project, name='edit_project'),
 
     # Matches any html file
     re_path(r'^.*\.*', views.pages, name='pages'),

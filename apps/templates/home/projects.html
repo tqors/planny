@@ -68,10 +68,10 @@
                           </div>
                         </div>
                       </div>
-                      <div class="mt-3">
-                        <a href="{% url 'project_timeline' project.projectID %}" class="btn btn-sm btn-primary">View</a>
-                        <a href="#" class="btn btn-sm btn-warning">Edit</a>
-                      </div>
+                        <div class="mt-3">
+                          <a href="{% url 'project_timeline' project.projectID %}" class="btn btn-sm btn-primary">View</a>
+                          <a href="{% url 'edit_project' project.projectID %}" class="btn btn-sm btn-warning">Edit</a>
+                        </div>
                     </div>
                   </div>
                 </div>
