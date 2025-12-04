@@ -81,7 +81,7 @@ def projects(request):
 
             # 3. Fetch Projects
             cursor.execute("""
-                SELECT p.projectID, p.projectName, p.projectType, p.startDate, p.endDate, 
+                SELECT p.projectID, p.projectName, p.startDate, p.endDate, 
                        p.projectProgress, c.companyName, s.statusDesc
                 FROM project p
                 LEFT JOIN client c ON p.clientID = c.clientID
@@ -93,18 +93,17 @@ def projects(request):
         projects_list = []
         for proj in projects_data:
             # Using the dynamic calculation method we added previously
-            # dynamic_progress = calculate_project_progress(proj[0]) 
+            dynamic_progress = calculate_project_progress(proj[0]) 
             
             projects_list.append({
-                'projectID': proj[0],
-                'projectName': proj[1],
-                'projectType': proj[2], # Added Project Type
-                'startDate': proj[3],
-                'endDate': proj[4],
-                'projectProgress': proj[5], # Or use dynamic_progress
-                'clientName': proj[6] if proj[6] else 'No Client',
-                'statusDesc': proj[7] if proj[7] else 'No Status'
-            })
+                    'projectID': proj[0],
+                    'projectName': proj[1],
+                    'startDate': proj[2],
+                    'endDate': proj[3],
+                    'projectProgress': dynamic_progress, 
+                    'clientName': proj[5] if proj[5] else 'No Client',
+                    'statusDesc': proj[6] if proj[6] else 'No Status'
+                })
 
         context = {
             'segment': 'projects',
@@ -623,13 +622,29 @@ def kanban_task_detail_api(request, task_id):
                 return JsonResponse({'error': 'Status is required'}, status=400)
             
             with connection.cursor() as cursor:
-                cursor.execute("""
-                    UPDATE task 
-                    SET statusID = %s 
-                    WHERE taskID = %s
-                """, [status_id, task_id])
-            
+                # 1. Update the Task
+                cursor.execute("UPDATE task SET statusID = %s WHERE taskID = %s", [status_id, task_id])
+                
+                # 2. Find the project ID for this task
+                cursor.execute("SELECT projectID FROM task WHERE taskID = %s", [task_id])
+                row = cursor.fetchone()
+                if row:
+                    project_id = row[0]
+                    
+                    # 3. LOGIC: If task is 'In Progress' (2), set Project to 'In Progress' (2)
+                    # You can make this more complex (e.g., check if ALL are done)
+                    if int(status_id) == 2:
+                        cursor.execute("UPDATE project SET statusID = 2 WHERE projectID = %s", [project_id])
+                    
+                    # 4. LOGIC: If task is 'Completed' (3), check if ALL tasks are completed
+                    elif int(status_id) == 3:
+                        cursor.execute("SELECT count(*) FROM task WHERE projectID = %s AND statusID != 3", [project_id])
+                        remaining = cursor.fetchone()[0]
+                        if remaining == 0:
+                            cursor.execute("UPDATE project SET statusID = 3 WHERE projectID = %s", [project_id])
+
             return JsonResponse({'success': True, 'message': 'Task updated successfully'})
+
         except json.JSONDecodeError:
             return JsonResponse({'error': 'Invalid JSON'}, status=400)
         except Exception as e:
