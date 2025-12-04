@@ -17,8 +17,8 @@
   }
   .btn-new-calendar:hover { background-color: #0069d9; }
 
-  .calendar-container { min-height:480px; display:flex; align-items:stretch; }
-  .calendar-placeholder { flex:1; display:flex; align-items:center; justify-content:center; color:#666; border:2px dashed #e9ecef; border-radius:8px; padding:30px; }
+  .calendar-container { min-height:480px; display:flex; flex-direction:column; }
+  .calendar-placeholder { flex:1; display:flex; align-items:center; justify-content:center; color:#666; border:2px dashed #e9ecef; border-radius:8px; padding:30px; width:100%; }
   .calendar-iframe { width:100%; height:600px; border:0; border-radius:8px; overflow:hidden; }
 
   /* Modal overlay similar to kanban */
@@ -34,6 +34,21 @@
   .btn-cancel { background:#e9ecef; color:#333; padding:8px 12px; border-radius:6px; border:none; cursor:pointer; }
   .error-message { color:#dc3545; font-size:13px; display:none; margin-top:6px; }
   .error-message.active { display:block; }
+
+  /* Calendar events styling */
+  .calendar-events-section { margin-top:20px; padding:15px; background:#f8f9fa; border-radius:8px; }
+  .calendar-events-header { font-weight:600; font-size:14px; margin-bottom:10px; color:#333; }
+  .calendar-event-item {
+    padding:10px;
+    margin-bottom:8px;
+    background:#fff;
+    border-left:4px solid #007bff;
+    border-radius:4px;
+    font-size:13px;
+  }
+  .calendar-event-title { font-weight:600; color:#333; }
+  .calendar-event-date { color:#666; font-size:12px; margin-top:4px; }
+  .calendar-event-project { color:#888; font-size:11px; margin-top:2px; }
 </style>
 {% endblock stylesheets %}
 
@@ -148,6 +163,7 @@
     if (!src) {
       area.className = 'calendar-placeholder';
       area.textContent = title ? title : 'No calendar configured. Click "Add Calendar" to paste a Google Calendar embed link.';
+      displayTaskEvents(area);
       return;
     }
 
@@ -161,6 +177,67 @@
 
     area.className = '';
     area.appendChild(iframe);
+    displayTaskEvents(area);
+  }
+
+  function displayTaskEvents(container) {
+    const EVENTS_KEY = 'planny_calendar_events';
+    const eventsJson = localStorage.getItem(EVENTS_KEY);
+    if (!eventsJson) return;
+
+    try {
+      const events = JSON.parse(eventsJson);
+      if (!events || events.length === 0) return;
+
+      const eventsSection = document.createElement('div');
+      eventsSection.className = 'calendar-events-section';
+      
+      const header = document.createElement('div');
+      header.className = 'calendar-events-header';
+      header.textContent = `📋 Upcoming Task Deadlines (${events.length})`;
+      eventsSection.appendChild(header);
+
+      // Sort events by date
+      const sortedEvents = events.sort((a, b) => {
+        const dateA = new Date(a.start?.date || a.start?.dateTime || '');
+        const dateB = new Date(b.start?.date || b.start?.dateTime || '');
+        return dateA - dateB;
+      });
+
+      sortedEvents.forEach(event => {
+        const eventDiv = document.createElement('div');
+        eventDiv.className = 'calendar-event-item';
+        
+        const title = document.createElement('div');
+        title.className = 'calendar-event-title';
+        title.textContent = event.summary || 'Untitled Event';
+        eventDiv.appendChild(title);
+
+        if (event.start?.date) {
+          const dateSpan = document.createElement('div');
+          dateSpan.className = 'calendar-event-date';
+          const date = new Date(event.start.date + 'T00:00:00');
+          dateSpan.textContent = `📅 ${date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}`;
+          eventDiv.appendChild(dateSpan);
+        }
+
+        if (event.description) {
+          const desc = document.createElement('div');
+          desc.className = 'calendar-event-project';
+          const projectMatch = event.description.match(/Project:\s*(.+?)(?:\n|$)/);
+          if (projectMatch) {
+            desc.textContent = `📦 ${projectMatch[1]}`;
+            eventDiv.appendChild(desc);
+          }
+        }
+
+        eventsSection.appendChild(eventDiv);
+      });
+
+      container.appendChild(eventsSection);
+    } catch (e) {
+      console.error('Error displaying calendar events:', e);
+    }
   }
 </script>
       <div class="container-fluid">

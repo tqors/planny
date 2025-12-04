@@ -502,8 +502,12 @@ def kanban_tasks_api(request):
                     (taskTitle, taskDescription, statusID, dueDate, assignedTo, projectID)
                     VALUES (%s, %s, %s, %s, %s, %s)
                 """, [task_title, task_description, status_id, due_date_obj, assigned_to, project_id])
+                
+                # Get the last inserted task ID
+                cursor.execute("SELECT LAST_INSERT_ID()")
+                last_id = cursor.fetchone()[0]
             
-            return JsonResponse({'success': True, 'message': 'Task created successfully'})
+            return JsonResponse({'success': True, 'taskID': last_id, 'message': 'Task created successfully'})
         except json.JSONDecodeError:
             return JsonResponse({'error': 'Invalid JSON'}, status=400)
         except Exception as e:
@@ -594,5 +598,79 @@ def developers_api(request):
         return JsonResponse({'developers': developers_list})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+def create_calendar_event(task_id, task_title, task_description, due_date, project_name, assigned_to_email=None):
+    """
+    Helper function to create a calendar event for a task.
+    Uses Google Calendar Data API format to generate an event object.
+    The event is stored as JSON in localStorage on the client side.
+    
+    Returns a dict representing the calendar event.
+    """
+    if not due_date:
+        return None
+    
+    event = {
+        'taskID': task_id,
+        'summary': task_title,
+        'description': f"{task_description or ''}\nProject: {project_name}",
+        'start': {
+            'date': due_date.isoformat() if hasattr(due_date, 'isoformat') else str(due_date)
+        },
+        'end': {
+            'date': (due_date + timedelta(days=1)).isoformat() if hasattr(due_date, 'isoformat') else str(due_date)
+        }
+    }
+    
+    if assigned_to_email:
+        event['attendees'] = [{'email': assigned_to_email, 'responseStatus': 'needsAction'}]
+    
+    return event
+
+
+@login_required(login_url="/login/")
+def calendar_event_api(request):
+    """
+    POST: Create a calendar event from a task
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            task_id = data.get('taskID')
+            
+            if not task_id:
+                return JsonResponse({'error': 'Task ID is required'}, status=400)
+            
+            # Fetch task details from database
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT t.taskTitle, t.taskDescription, t.dueDate, p.projectName, u.email
+                    FROM task t
+                    LEFT JOIN project p ON t.projectID = p.projectID
+                    LEFT JOIN developer d ON t.assignedTo = d.developerID
+                    LEFT JOIN user u ON d.developerID = u.userID
+                    WHERE t.taskID = %s
+                """, [task_id])
+                result = cursor.fetchone()
+            
+            if not result:
+                return JsonResponse({'error': 'Task not found'}, status=404)
+            
+            task_title, task_desc, due_date, project_name, email = result
+            
+            # Create calendar event
+            event = create_calendar_event(
+                task_id=task_id,
+                task_title=task_title,
+                task_description=task_desc,
+                due_date=due_date,
+                project_name=project_name or 'Unknown Project',
+                assigned_to_email=email
+            )
+            
+            return JsonResponse({'event': event, 'message': 'Calendar event created'})
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
 
 

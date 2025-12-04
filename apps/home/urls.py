@@ -25,6 +25,7 @@ urlpatterns = [
     path('api/kanban-tasks/<int:task_id>/', views.kanban_task_detail_api, name='kanban_task_detail_api'),
     path('api/projects/', views.projects_api, name='projects_api'),
     path('api/developers/', views.developers_api, name='developers_api'),
+    path('api/calendar-event/', views.calendar_event_api, name='calendar_event_api'),
 
     path('project/<int:project_id>/timeline/', views.project_timeline, name='project_timeline'),
 

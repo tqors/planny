@@ -685,6 +685,51 @@
     document.getElementById('successMessage').classList.remove('active');
   }
 
+  // Save calendar event to localStorage
+  function saveCalendarEvent(event) {
+    const EVENTS_KEY = 'planny_calendar_events';
+    let events = [];
+    const stored = localStorage.getItem(EVENTS_KEY);
+    if (stored) {
+      try {
+        events = JSON.parse(stored);
+      } catch (e) {
+        events = [];
+      }
+    }
+    
+    // Check if event already exists
+    const exists = events.some(e => e.taskID === event.taskID);
+    if (!exists) {
+      events.push(event);
+      localStorage.setItem(EVENTS_KEY, JSON.stringify(events));
+      console.log('Calendar event saved:', event);
+    }
+  }
+
+  // Create calendar event after task is created
+  function createCalendarEvent(taskId) {
+    fetch('/api/calendar-event/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCookie('csrftoken')
+      },
+      body: JSON.stringify({ taskID: taskId })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.event) {
+        saveCalendarEvent(data.event);
+        console.log('Event added to calendar');
+      }
+    })
+    .catch(error => {
+      console.error('Error creating calendar event:', error);
+      // Don't fail task creation if calendar event fails
+    });
+  }
+
   // Handle form submission
   document.getElementById('taskForm').addEventListener('submit', function(event) {
     event.preventDefault();
@@ -745,6 +790,8 @@
     .then(data => {
       document.getElementById('successMessage').classList.add('active');
       setTimeout(() => {
+        // Get the created task ID from response if available, or fetch it
+        createCalendarEvent(data.taskID || 'latest');
         closeTaskModal();
         loadKanbanData();
       }, 1500);
