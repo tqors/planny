@@ -16,9 +16,13 @@ urlpatterns = [
     
     # Projects page
     path('projects/', views.projects, name='projects'),
+    path('tables/', views.tables_view, name='tables'),
     
     # Create project
     path('project/create/', views.create_project, name='create_project'),
+
+    # Profile page
+    path('profile/', views.profile, name='profile'),
 
     # Kanban API endpoints
     path('api/kanban-tasks/', views.kanban_tasks_api, name='kanban_tasks_api'),
@@ -26,6 +30,11 @@ urlpatterns = [
     path('api/projects/', views.projects_api, name='projects_api'),
     path('api/developers/', views.developers_api, name='developers_api'),
     path('api/calendar-event/', views.calendar_event_api, name='calendar_event_api'),
+    path('api/calendar-events/', views.calendar_events_api, name='calendar_events_api'),
+    
+    # User calendar event endpoints (server-side persistence)
+    path('api/user-calendar-events/', views.user_calendar_events_api, name='user_calendar_events_api'),
+    path('api/user-calendar-events/<int:event_id>/', views.user_calendar_event_detail_api, name='user_calendar_event_detail_api'),
 
     path('project/<int:project_id>/timeline/', views.project_timeline, name='project_timeline'),
     path('project/<int:project_id>/edit/', views.edit_project, name='edit_project'),

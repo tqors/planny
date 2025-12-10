@@ -1,4 +1,3 @@
-# -*- encoding: utf-8 -*-
 """
 Copyright (c) 2019 - present AppSeed.us
 """
@@ -13,6 +12,21 @@ from django.db import connection
 from datetime import datetime, time
 from django.views.decorators.http import require_http_methods
 import json
+from apps.home.profile_form import ProfileForm
+
+# ...existing code...
+
+@login_required(login_url="/login/")
+def profile(request):
+    user = request.user
+    if request.method == 'POST':
+        form = ProfileForm(request.POST, instance=user)
+        if form.is_valid():
+            form.save()
+            return redirect('profile')
+    else:
+        form = ProfileForm(instance=user)
+    return render(request, 'home/profile.html', {'form': form, 'user': user})
 # ProjectForm was used previously but client selection was removed from the UI
 
 
@@ -118,6 +132,71 @@ def projects(request):
 
 
 @login_required(login_url="/login/")
+def tables_view(request):
+    """
+    Render the projects table with project data from the database.
+    This ensures `tables.html` receives the `projects` context expected by the template.
+    """
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT clientID, companyName FROM client")
+            clients = cursor.fetchall()
+
+            cursor.execute("""
+                SELECT p.projectID, p.projectName, p.startDate, p.endDate, 
+                       p.projectProgress, c.companyName, s.statusDesc
+                FROM project p
+                LEFT JOIN client c ON p.clientID = c.clientID
+                LEFT JOIN status s ON p.statusID = s.statusID
+                ORDER BY p.projectID DESC
+            """)
+            projects_data = cursor.fetchall()
+            
+            print(f"DEBUG: Retrieved {len(projects_data)} projects")  # Debug line
+
+            # Fetch developers for assignment dropdown
+            try:
+                cursor.execute("""
+                    SELECT u.userID, u.username, u.firstName, u.lastName 
+                    FROM user u 
+                    JOIN developer d ON u.userID = d.developerID
+                """)
+                developers = cursor.fetchall()
+            except Exception:
+                developers = []
+
+        projects_list = []
+        for proj in projects_data:
+            print(f"DEBUG: Processing project {proj[0]}: {proj[1]}")  # Debug line
+            dynamic_progress = calculate_project_progress(proj[0])
+            projects_list.append({
+                'projectID': proj[0],
+                'projectName': proj[1],
+                'startDate': proj[2],
+                'endDate': proj[3],
+                'projectProgress': dynamic_progress,
+                'clientName': proj[5] if proj[5] else 'No Client',
+                'statusDesc': proj[6] if proj[6] else 'No Status'
+            })
+
+        print(f"DEBUG: Final projects_list has {len(projects_list)} items")  # Debug line
+        
+        context = {
+            'segment': 'tables',
+            'clients': [{'clientID': c[0], 'companyName': c[1]} for c in clients],
+            'developers': [{'id': d[0], 'name': f"{d[2]} {d[3]} ({d[1]})"} for d in developers],
+            'projects': projects_list  # <--- You named the variable 'projects' here
+        }
+    except Exception as e:
+        print(f"ERROR in tables_view: {e}")  # Debug line
+        import traceback
+        traceback.print_exc()
+        context = {'segment': 'tables', 'projects': [], 'error': str(e)}
+
+    return render(request, 'home/tables.html', context)
+
+
+@login_required(login_url="/login/")
 def create_project(request):
     """
     Create a new project with Auto-Timeline Generation
@@ -190,7 +269,7 @@ def create_project(request):
                             else:
                                 current_task_end = current_task_start + timedelta(days=days_per_task)
 
-                            # Insert the Auto-Generated Task
+                            # Ensure dates are properly formatted
                             cursor.execute("""
                                 INSERT INTO task 
                                 (projectID, taskTitle, taskDescription, statusID, startDate, dueDate)
@@ -199,17 +278,22 @@ def create_project(request):
                                 new_project_id, 
                                 feature, 
                                 "Auto-generated from Project Requirements", 
-                                current_task_start, 
-                                current_task_end
+                                current_task_start,  # DATE object
+                                current_task_end      # DATE object
                             ])
                             
                             # Set next task to start the day after this one ends
                             current_task_start = current_task_end + timedelta(days=1)
+                
+                # Explicitly commit after all inserts
+                connection.commit()
 
             return redirect('projects')
             
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Error creating project: {e}")
+            import traceback
+            traceback.print_exc()
             return redirect('projects')
 
     return redirect('projects')
@@ -708,7 +792,7 @@ def developers_api(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-def create_calendar_event(task_id, task_title, task_description, due_date, project_name, assigned_to_email=None):
+def create_calendar_event(task_id, task_title, task_description, start_date, due_date, project_name, assigned_to_email=None):
     """
     Helper function to create a calendar event for a task.
     Uses Google Calendar Data API format to generate an event object.
@@ -716,18 +800,22 @@ def create_calendar_event(task_id, task_title, task_description, due_date, proje
     
     Returns a dict representing the calendar event.
     """
-    if not due_date:
+    # Prefer start_date if provided; otherwise fall back to due_date
+    event_start = start_date if start_date else due_date
+    event_end = due_date if due_date else (start_date or None)
+
+    if not event_start:
         return None
-    
+
     event = {
         'taskID': task_id,
         'summary': task_title,
         'description': f"{task_description or ''}\nProject: {project_name}",
         'start': {
-            'date': due_date.isoformat() if hasattr(due_date, 'isoformat') else str(due_date)
+            'date': event_start.isoformat() if hasattr(event_start, 'isoformat') else str(event_start)
         },
         'end': {
-            'date': (due_date + timedelta(days=1)).isoformat() if hasattr(due_date, 'isoformat') else str(due_date)
+            'date': ((event_end + timedelta(days=1)).isoformat() if hasattr(event_end, 'isoformat') else str(event_end)) if event_end else None
         }
     }
     
@@ -753,7 +841,7 @@ def calendar_event_api(request):
             # Fetch task details from database
             with connection.cursor() as cursor:
                 cursor.execute("""
-                    SELECT t.taskTitle, t.taskDescription, t.dueDate, p.projectName, u.email
+                    SELECT t.taskTitle, t.taskDescription, t.startDate, t.dueDate, p.projectName, u.email
                     FROM task t
                     LEFT JOIN project p ON t.projectID = p.projectID
                     LEFT JOIN developer d ON t.assignedTo = d.developerID
@@ -765,13 +853,14 @@ def calendar_event_api(request):
             if not result:
                 return JsonResponse({'error': 'Task not found'}, status=404)
             
-            task_title, task_desc, due_date, project_name, email = result
-            
-            # Create calendar event
+            task_title, task_desc, start_date, due_date, project_name, email = result
+
+            # Create calendar event (prefer start_date when available)
             event = create_calendar_event(
                 task_id=task_id,
                 task_title=task_title,
                 task_description=task_desc,
+                start_date=start_date,
                 due_date=due_date,
                 project_name=project_name or 'Unknown Project',
                 assigned_to_email=email
@@ -780,5 +869,204 @@ def calendar_event_api(request):
             return JsonResponse({'event': event, 'message': 'Calendar event created'})
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required(login_url="/login/")
+def calendar_events_api(request):
+    """
+    GET: Return calendar events for all tasks that have a dueDate
+    """
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT t.taskID, t.taskTitle, t.taskDescription, t.startDate, t.dueDate, p.projectName, u.email
+                FROM task t
+                LEFT JOIN project p ON t.projectID = p.projectID
+                LEFT JOIN developer d ON t.assignedTo = d.developerID
+                LEFT JOIN user u ON d.developerID = u.userID
+                WHERE t.dueDate IS NOT NULL OR t.startDate IS NOT NULL
+                ORDER BY COALESCE(t.startDate, t.dueDate) ASC
+            """)
+            rows = cursor.fetchall()
+
+        events = []
+        for r in rows:
+            task_id, title, desc, start_date, due_date, project_name, email = r
+            event = create_calendar_event(task_id, title, desc, start_date, due_date, project_name or 'Unknown Project', email)
+            if event:
+                events.append(event)
+
+        return JsonResponse({'events': events})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+# ==================== USER CALENDAR EVENT ENDPOINTS ====================
+
+@login_required(login_url="/login/")
+def user_calendar_events_api(request):
+    """
+    GET: Retrieve all calendar events for the logged-in user (both task-based and custom)
+    POST: Create a new calendar event for the user
+    """
+    try:
+        # Get user ID from Django auth
+        user_id = request.user.id
+        
+        with connection.cursor() as cursor:
+            # First, fetch the planny userID from the custom user table
+            cursor.execute("SELECT userID FROM user WHERE username = %s", [request.user.username])
+            user_row = cursor.fetchone()
+            if not user_row:
+                return JsonResponse({'error': 'User not found in database'}, status=404)
+            planny_user_id = user_row[0]
+        
+        if request.method == 'GET':
+            # Fetch all events for this user from userCalendarEvent table
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT eventID, taskID, eventTitle, eventDescription, startDate, endDate, isTaskBased, createdAt
+                    FROM userCalendarEvent
+                    WHERE userID = %s
+                    ORDER BY startDate ASC
+                """, [planny_user_id])
+                rows = cursor.fetchall()
+            
+            events = []
+            for r in rows:
+                event_id, task_id, title, desc, start_date, end_date, is_task_based, created_at = r
+                events.append({
+                    'eventID': event_id,
+                    'taskID': task_id,
+                    'summary': title,
+                    'description': desc,
+                    'start': {'date': start_date.isoformat() if start_date else None},
+                    'end': {'date': end_date.isoformat() if end_date else None},
+                    'isTaskBased': bool(is_task_based),
+                    'createdAt': created_at.isoformat() if created_at else None
+                })
+            
+            return JsonResponse({'events': events})
+        
+        elif request.method == 'POST':
+            data = json.loads(request.body)
+            event_title = data.get('eventTitle', '').strip()
+            event_desc = data.get('eventDescription', '').strip()
+            start_date_str = data.get('startDate')
+            end_date_str = data.get('endDate')
+            task_id = data.get('taskID')
+            
+            if not event_title:
+                return JsonResponse({'error': 'Event title is required'}, status=400)
+            
+            # Parse dates
+            start_date = None
+            end_date = None
+            try:
+                if start_date_str:
+                    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                if end_date_str:
+                    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return JsonResponse({'error': 'Invalid date format'}, status=400)
+            
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO userCalendarEvent (userID, taskID, eventTitle, eventDescription, startDate, endDate, isTaskBased)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, [planny_user_id, task_id or None, event_title, event_desc, start_date, end_date, 0])
+                
+                cursor.execute("SELECT LAST_INSERT_ID()")
+                event_id = cursor.fetchone()[0]
+            
+            return JsonResponse({
+                'success': True,
+                'eventID': event_id,
+                'message': 'Calendar event created successfully'
+            })
+    
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required(login_url="/login/")
+def user_calendar_event_detail_api(request, event_id):
+    """
+    PATCH: Update a user calendar event
+    DELETE: Delete a user calendar event
+    """
+    try:
+        user_id = request.user.id
+        
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT userID FROM user WHERE username = %s", [request.user.username])
+            user_row = cursor.fetchone()
+            if not user_row:
+                return JsonResponse({'error': 'User not found'}, status=404)
+            planny_user_id = user_row[0]
+            
+            # Verify event belongs to this user
+            cursor.execute("SELECT userID FROM userCalendarEvent WHERE eventID = %s", [event_id])
+            event_row = cursor.fetchone()
+            if not event_row or event_row[0] != planny_user_id:
+                return JsonResponse({'error': 'Event not found or unauthorized'}, status=404)
+        
+        if request.method == 'PATCH':
+            data = json.loads(request.body)
+            event_title = data.get('eventTitle')
+            event_desc = data.get('eventDescription')
+            start_date_str = data.get('startDate')
+            end_date_str = data.get('endDate')
+            
+            # Parse dates
+            start_date = None
+            end_date = None
+            try:
+                if start_date_str:
+                    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                if end_date_str:
+                    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return JsonResponse({'error': 'Invalid date format'}, status=400)
+            
+            with connection.cursor() as cursor:
+                updates = []
+                params = []
+                
+                if event_title is not None:
+                    updates.append("eventTitle = %s")
+                    params.append(event_title)
+                if event_desc is not None:
+                    updates.append("eventDescription = %s")
+                    params.append(event_desc)
+                if start_date_str:
+                    updates.append("startDate = %s")
+                    params.append(start_date)
+                if end_date_str:
+                    updates.append("endDate = %s")
+                    params.append(end_date)
+                
+                if updates:
+                    updates.append("updatedAt = CURRENT_TIMESTAMP")
+                    params.append(event_id)
+                    
+                    update_sql = f"UPDATE userCalendarEvent SET {', '.join(updates)} WHERE eventID = %s"
+                    cursor.execute(update_sql, params)
+            
+            return JsonResponse({'success': True, 'message': 'Event updated successfully'})
+        
+        elif request.method == 'DELETE':
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM userCalendarEvent WHERE eventID = %s", [event_id])
+            
+            return JsonResponse({'success': True, 'message': 'Event deleted successfully'})
+    
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
 
 
