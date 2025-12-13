@@ -20,6 +20,7 @@ urlpatterns = [
     
     # Create project
     path('project/create/', views.create_project, name='create_project'),
+    path('project/<int:project_id>/delete/', views.delete_project, name='delete_project'),
 
     # Profile page
     path('profile/', views.profile, name='profile'),
@@ -39,7 +40,8 @@ urlpatterns = [
     path('project/<int:project_id>/timeline/', views.project_timeline, name='project_timeline'),
     path('project/<int:project_id>/edit/', views.edit_project, name='edit_project'),
 
-    # Matches any html file
-    re_path(r'^.*\.*', views.pages, name='pages'),
+    # Matches any html file (MUST be last to avoid catching other routes)
+    # Only match files that are NOT already handled by other routes
+    re_path(r'^(?!api/|project/|tables/|projects/|kanban/|profile/)[\w/]*\.html$', views.pages, name='pages'),
 
 ]

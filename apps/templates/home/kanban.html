@@ -348,7 +348,12 @@
           <div class="card shadow">
             <div class="card-header bg-transparent">
               <div class="kanban-top-bar">
-                <h3 class="mb-0">Project Tasks</h3>
+                <div>
+                  <h3 class="mb-0" style="display: inline-block; margin-right: 20px;">Project Tasks</h3>
+                  <select id="projectFilter" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                    <option value="">-- All Projects --</option>
+                  </select>
+                </div>
                 <button class="btn-new-task" onclick="openTaskModal()">+ New Task</button>
               </div>
             </div>
@@ -464,6 +469,9 @@
     loadKanbanData();
     loadProjects();
     loadDevelopers();
+    
+    // Add event listener for project filter
+    document.getElementById('projectFilter').addEventListener('change', filterKanbanByProject);
   });
 
   // Load kanban data from the server
@@ -482,12 +490,30 @@
       return response.json();
     })
     .then(data => {
+      // Store all tasks globally for filtering
+      window.allTasks = data.tasks;
       renderKanban(data.tasks);
     })
     .catch(error => {
       console.error('Error loading kanban data:', error);
       showErrorMessage('Failed to load tasks. Please refresh the page.');
     });
+  }
+
+  // Filter kanban by selected project
+  function filterKanbanByProject() {
+    const selectedProjectId = document.getElementById('projectFilter').value;
+    
+    if (selectedProjectId === '') {
+      // Show all tasks
+      renderKanban(window.allTasks);
+    } else {
+      // Filter tasks by project
+      const filteredTasks = window.allTasks.filter(task => 
+        task.projectID === parseInt(selectedProjectId)
+      );
+      renderKanban(filteredTasks);
+    }
   }
 
   // Render the kanban board
@@ -626,11 +652,20 @@
     .then(response => response.json())
     .then(data => {
       const projectSelect = document.getElementById('taskProject');
+      const projectFilter = document.getElementById('projectFilter');
+      
       data.projects.forEach(project => {
+        // Add to task creation dropdown
         const option = document.createElement('option');
         option.value = project.projectID;
         option.textContent = project.projectName;
         projectSelect.appendChild(option);
+        
+        // Add to project filter dropdown
+        const filterOption = document.createElement('option');
+        filterOption.value = project.projectID;
+        filterOption.textContent = project.projectName;
+        projectFilter.appendChild(filterOption);
       });
     })
     .catch(error => {
