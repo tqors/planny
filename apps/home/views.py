@@ -809,6 +809,8 @@ def kanban_task_detail_api(request, task_id):
             return JsonResponse({'error': 'Invalid JSON'}, status=400)
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
+
+    elif request.method == 'DELETE':
         try:
             with connection.cursor() as cursor:
                 cursor.execute("DELETE FROM task WHERE taskID = %s", [task_id])
