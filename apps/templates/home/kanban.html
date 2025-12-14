@@ -440,6 +440,79 @@
       </div>
     </div>
 
+    <!-- Edit Task Modal -->
+    <div class="overlay" id="editTaskOverlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          Edit Task
+        </div>
+        <form id="editTaskForm">
+          <input type="hidden" id="editTaskId" name="editTaskId">
+          
+          <div class="form-group">
+            <label for="editTaskTitle">Task Title *</label>
+            <input type="text" id="editTaskTitle" name="editTaskTitle" placeholder="Enter task title" required>
+            <span class="error-message" id="editTitleError"></span>
+          </div>
+
+          <div class="form-group">
+            <label for="editTaskDescription">Task Description</label>
+            <textarea id="editTaskDescription" name="editTaskDescription" placeholder="Enter task description"></textarea>
+            <span class="error-message" id="editDescError"></span>
+          </div>
+
+          <div class="form-group">
+            <label for="editTaskStatus">Status *</label>
+            <select id="editTaskStatus" name="editTaskStatus" required>
+              <option value="">-- Select Status --</option>
+              <option value="1">To-Do</option>
+              <option value="2">In Progress</option>
+              <option value="3">Bug Report</option>
+              <option value="4">Testing</option>
+              <option value="5">Complete</option>
+            </select>
+            <span class="error-message" id="editStatusError"></span>
+          </div>
+
+          <div class="form-group">
+            <label for="editTaskDueDate">Due Date</label>
+            <input type="date" id="editTaskDueDate" name="editTaskDueDate">
+            <span class="error-message" id="editDueDateError"></span>
+          </div>
+
+          <div class="form-group">
+            <label for="editTaskAssignedTo">Assigned To</label>
+            <select id="editTaskAssignedTo" name="editTaskAssignedTo">
+              <option value="">-- Select Developer --</option>
+              <!-- Options will be populated by JavaScript -->
+            </select>
+            <span class="error-message" id="editAssignedError"></span>
+          </div>
+
+          <div class="form-group">
+            <label for="editTaskProject">Project *</label>
+            <select id="editTaskProject" name="editTaskProject" required>
+              <option value="">-- Select Project --</option>
+              <!-- Options will be populated by JavaScript -->
+            </select>
+            <span class="error-message" id="editProjectError"></span>
+          </div>
+
+          <div class="loading" id="editFormLoading">
+            <div class="spinner"></div>
+            <p>Saving changes...</p>
+          </div>
+
+          <div class="success-message" id="editSuccessMessage">Task updated successfully!</div>
+
+          <div class="modal-buttons">
+            <button type="button" class="btn-cancel" onclick="closeEditTaskModal()">Cancel</button>
+            <button type="submit" class="btn-save">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
 {% endblock content %}
 
 <!-- Specific JS goes HERE --> 
@@ -550,6 +623,17 @@
                 <div class="kanban-card-meta-item">
                   <span class="kanban-card-label">Assigned:</span>
                   <span class="kanban-card-value">${task.assignedToName || 'Unassigned'}</span>
+                </div>
+              </div>
+              <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee; display: flex; justify-content: flex-end;">
+                <div class="dropdown" style="position: relative; display: inline-block;">
+                  <button class="btn btn-sm btn-icon-only text-muted" style="background: none; border: none; cursor: pointer; padding: 4px;" onclick="toggleDropdown(event)">
+                    <i class="fas fa-ellipsis-v"></i>
+                  </button>
+                  <div class="dropdown-menu" style="position: absolute; right: 0; background: white; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); min-width: 120px; z-index: 1000; display: none;">
+                    <a class="dropdown-item" href="#" onclick="openEditTaskModal(${task.taskID}, '${escapeHtml(task.taskTitle).replace(/'/g, "\\'")}', '${escapeHtml((task.taskDescription || '').replace(/'/g, "\\'"))}', ${task.statusID}, '${task.dueDate || ''}', ${task.assignedTo || 'null'}, ${task.projectID}); return false;" style="display: block; padding: 10px 15px; color: #333; text-decoration: none; cursor: pointer; border-bottom: 1px solid #eee;">Edit</a>
+                    <a class="dropdown-item" href="#" onclick="deleteTask(${task.taskID}, '${escapeHtml(task.taskTitle).replace(/'/g, "\\'")}'); return false;" style="display: block; padding: 10px 15px; color: #dc3545; text-decoration: none; cursor: pointer;">Delete</a>
+                  </div>
                 </div>
               </div>
             </div>
@@ -709,6 +793,162 @@
     document.getElementById('taskOverlay').classList.remove('active');
     document.getElementById('taskForm').reset();
     clearErrors();
+  }
+
+  // Dropdown menu toggle
+  function toggleDropdown(event) {
+    event.stopPropagation();
+    const dropdown = event.currentTarget.parentElement.querySelector('.dropdown-menu');
+    const isVisible = dropdown.style.display === 'block';
+    
+    // Close all open dropdowns
+    document.querySelectorAll('.dropdown-menu').forEach(menu => {
+      menu.style.display = 'none';
+    });
+    
+    // Toggle current dropdown
+    if (!isVisible) {
+      dropdown.style.display = 'block';
+    }
+  }
+
+  // Close dropdown when clicking outside
+  document.addEventListener('click', function() {
+    document.querySelectorAll('.dropdown-menu').forEach(menu => {
+      menu.style.display = 'none';
+    });
+  });
+
+  // Delete task function
+  function deleteTask(taskId, taskName) {
+    if (confirm(`Are you sure you want to delete the task "${taskName}"?\n\nThis action cannot be undone.`)) {
+      fetch(`/api/kanban-tasks/${taskId}/`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCookie('csrftoken')
+        }
+      })
+      .then(response => {
+        if (!response.ok) {
+          return response.json().then(data => {
+            throw new Error(data.error || 'Failed to delete task');
+          });
+        }
+        return response.json();
+      })
+      .then(data => {
+        loadKanbanData();
+      })
+      .catch(error => {
+        console.error('Error deleting task:', error);
+        alert('Error deleting task: ' + error.message);
+      });
+    }
+  }
+
+  // Open edit task modal
+  function openEditTaskModal(taskId, taskTitle, taskDescription, statusID, dueDate, assignedTo, projectID) {
+    document.getElementById('editTaskId').value = taskId;
+    document.getElementById('editTaskTitle').value = taskTitle;
+    document.getElementById('editTaskDescription').value = taskDescription;
+    document.getElementById('editTaskStatus').value = statusID;
+    document.getElementById('editTaskDueDate').value = dueDate;
+    document.getElementById('editTaskAssignedTo').value = assignedTo || '';
+    document.getElementById('editTaskProject').value = projectID;
+    
+    document.getElementById('editTaskOverlay').classList.add('active');
+    clearEditErrors();
+  }
+
+  // Close edit task modal
+  function closeEditTaskModal() {
+    document.getElementById('editTaskOverlay').classList.remove('active');
+    document.getElementById('editTaskForm').reset();
+    clearEditErrors();
+  }
+
+  // Clear edit error messages
+  function clearEditErrors() {
+    document.querySelectorAll('#editTaskOverlay .error-message').forEach(el => {
+      el.classList.remove('active');
+      el.textContent = '';
+    });
+    document.getElementById('editSuccessMessage').classList.remove('active');
+  }
+
+  // Submit edit task form
+  document.getElementById('editTaskForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    clearEditErrors();
+
+    const taskId = document.getElementById('editTaskId').value;
+    const title = document.getElementById('editTaskTitle').value.trim();
+    const description = document.getElementById('editTaskDescription').value.trim();
+    const status = document.getElementById('editTaskStatus').value;
+    const dueDate = document.getElementById('editTaskDueDate').value;
+    const assignedTo = document.getElementById('editTaskAssignedTo').value;
+    const project = document.getElementById('editTaskProject').value;
+
+    // Validation
+    if (!title) {
+      showEditError('editTitleError', 'Task title is required');
+      return;
+    }
+    if (!status) {
+      showEditError('editStatusError', 'Status is required');
+      return;
+    }
+    if (!project) {
+      showEditError('editProjectError', 'Project is required');
+      return;
+    }
+
+    document.getElementById('editFormLoading').classList.add('active');
+
+    // Submit form
+    fetch(`/api/kanban-tasks/${taskId}/`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCookie('csrftoken')
+      },
+      body: JSON.stringify({
+        taskTitle: title,
+        taskDescription: description,
+        statusID: parseInt(status),
+        dueDate: dueDate || null,
+        assignedTo: assignedTo ? parseInt(assignedTo) : null,
+        projectID: parseInt(project)
+      })
+    })
+    .then(response => {
+      document.getElementById('editFormLoading').classList.remove('active');
+      if (!response.ok) {
+        return response.json().then(data => {
+          throw new Error(data.error || 'Failed to update task');
+        });
+      }
+      return response.json();
+    })
+    .then(data => {
+      document.getElementById('editSuccessMessage').classList.add('active');
+      setTimeout(() => {
+        closeEditTaskModal();
+        loadKanbanData();
+      }, 1500);
+    })
+    .catch(error => {
+      document.getElementById('editFormLoading').classList.remove('active');
+      console.error('Error updating task:', error);
+      showEditError('editTitleError', error.message);
+    });
+  });
+
+  function showEditError(elementId, message) {
+    const errorEl = document.getElementById(elementId);
+    errorEl.textContent = message;
+    errorEl.classList.add('active');
   }
 
   // Clear error messages
@@ -876,6 +1116,13 @@
   document.getElementById('taskOverlay').addEventListener('click', function(event) {
     if (event.target === this) {
       closeTaskModal();
+    }
+  });
+
+  // Close edit modal when clicking outside
+  document.getElementById('editTaskOverlay').addEventListener('click', function(event) {
+    if (event.target === this) {
+      closeEditTaskModal();
     }
   });
 </script>

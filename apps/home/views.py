@@ -30,6 +30,101 @@ def profile(request):
 # ProjectForm was used previously but client selection was removed from the UI
 
 
+# AI-based task generation system
+PROJECT_TYPE_TASKS = {
+    'Web Development': [
+        'Setup Database & Server Architecture',
+        'Create API Endpoints',
+        'Build Frontend UI Components',
+        'Implement Authentication & Authorization',
+        'Integrate Frontend with Backend',
+        'Testing & Quality Assurance',
+        'Deployment & Monitoring'
+    ],
+    'Mobile App': [
+        'Define App Requirements & Wireframes',
+        'Setup Development Environment',
+        'Create User Interface (UI)',
+        'Implement Core Features',
+        'Add Payment/Authentication System',
+        'Testing on Devices',
+        'App Store Submission'
+    ],
+    'Desktop Software': [
+        'Define Software Architecture',
+        'Setup Development Framework',
+        'Create User Interface',
+        'Implement Core Functionality',
+        'Add Database Integration',
+        'Testing & Debugging',
+        'Build Installer & Documentation'
+    ],
+    'AI/Machine Learning': [
+        'Data Collection & Preparation',
+        'Exploratory Data Analysis (EDA)',
+        'Feature Engineering',
+        'Model Selection & Training',
+        'Model Evaluation & Tuning',
+        'Deployment Pipeline Setup',
+        'Monitoring & Maintenance'
+    ],
+    'Other': [
+        'Project Planning & Requirements',
+        'Development & Implementation',
+        'Testing & Quality Assurance',
+        'Review & Refinement',
+        'Documentation',
+        'Deployment',
+        'Maintenance & Support'
+    ]
+}
+
+def generate_tasks_for_project(project_type, project_id, start_date, end_date):
+    """
+    AI function to automatically generate tasks based on project type.
+    Distributes tasks evenly across the project timeline.
+    """
+    # Get task templates for the project type
+    task_templates = PROJECT_TYPE_TASKS.get(project_type, PROJECT_TYPE_TASKS['Other'])
+    
+    # Calculate days per task
+    total_days = (end_date - start_date).days
+    if total_days < 1:
+        total_days = 1
+    
+    days_per_task = total_days // len(task_templates)
+    if days_per_task < 1:
+        days_per_task = 1
+    
+    current_task_start = start_date
+    
+    with connection.cursor() as cursor:
+        for i, task_title in enumerate(task_templates):
+            # Calculate end date for this task
+            if i == len(task_templates) - 1:
+                current_task_end = end_date
+            else:
+                current_task_end = current_task_start + timedelta(days=days_per_task)
+            
+            # Insert task into database
+            cursor.execute("""
+                INSERT INTO task 
+                (projectID, taskTitle, taskDescription, statusID, startDate, dueDate)
+                VALUES (%s, %s, %s, 1, %s, %s)
+            """, [
+                project_id,
+                task_title,
+                f"Auto-generated task for {project_type} project",
+                current_task_start,
+                current_task_end
+            ])
+            
+            # Set next task to start the day after this one ends
+            current_task_start = current_task_end + timedelta(days=1)
+        
+        connection.commit()
+
+
 @login_required(login_url="/login/")
 def index(request):
     context = {'segment': 'index'}
@@ -278,45 +373,58 @@ def create_project(request):
                         VALUES (%s, %s, 'Developer')
                     """, [new_project_id, dev_id])
 
-                # 4. AUTO-TIMELINE GENERATION (The "AI" Logic)
-                if features_text:
-                    # Split features by new line
-                    features = [f.strip() for f in features_text.split('\n') if f.strip()]
-                    
-                    if features:
-                        # Calculate how many days per feature
-                        total_days = (end_date - start_date).days
-                        if total_days < 1: total_days = 1
-                        days_per_task = total_days // len(features)
-                        
-                        current_task_start = start_date
-                        
-                        for i, feature in enumerate(features):
-                            # Calculate end date for this specific task
-                            # The last task always ends on the project deadline to be safe
-                            if i == len(features) - 1:
-                                current_task_end = end_date
-                            else:
-                                current_task_end = current_task_start + timedelta(days=days_per_task)
-
-                            # Ensure dates are properly formatted
-                            cursor.execute("""
-                                INSERT INTO task 
-                                (projectID, taskTitle, taskDescription, statusID, startDate, dueDate)
-                                VALUES (%s, %s, %s, 1, %s, %s)
-                            """, [
-                                new_project_id, 
-                                feature, 
-                                "Auto-generated from Project Requirements", 
-                                current_task_start,  # DATE object
-                                current_task_end      # DATE object
-                            ])
-                            
-                            # Set next task to start the day after this one ends
-                            current_task_start = current_task_end + timedelta(days=1)
-                
-                # Explicitly commit after all inserts
                 connection.commit()
+
+            # 4. AUTO-TIMELINE GENERATION USING AI
+            # Always generate tasks based on project type
+            generate_tasks_for_project(project_type, new_project_id, start_date, end_date)
+            
+            # Also support custom features if provided
+            try:
+                with connection.cursor() as cursor:
+                    if features_text:
+                        # Split features by new line
+                        features = [f.strip() for f in features_text.split('\n') if f.strip()]
+                        
+                        if features:
+                            # Calculate how many days per feature
+                            total_days = (end_date - start_date).days
+                            if total_days < 1: total_days = 1
+                            days_per_task = total_days // len(features)
+                            
+                            current_task_start = start_date
+                            
+                            for i, feature in enumerate(features):
+                                # Calculate end date for this specific task
+                                # The last task always ends on the project deadline to be safe
+                                if i == len(features) - 1:
+                                    current_task_end = end_date
+                                else:
+                                    current_task_end = current_task_start + timedelta(days=days_per_task)
+
+                                # Ensure dates are properly formatted
+                                cursor.execute("""
+                                    INSERT INTO task 
+                                    (projectID, taskTitle, taskDescription, statusID, startDate, dueDate)
+                                    VALUES (%s, %s, %s, 1, %s, %s)
+                                """, [
+                                    new_project_id, 
+                                    feature, 
+                                    "Auto-generated from Project Requirements", 
+                                    current_task_start,  # DATE object
+                                    current_task_end      # DATE object
+                                ])
+                                
+                                # Set next task to start the day after this one ends
+                                current_task_start = current_task_end + timedelta(days=1)
+                    
+                    # Explicitly commit after all inserts
+                    connection.commit()
+
+            except Exception as e:
+                print(f"Error creating custom features tasks: {e}")
+                import traceback
+                traceback.print_exc()
 
             return redirect('tables')
             
@@ -616,10 +724,11 @@ def kanban_tasks_api(request):
 
 
 @login_required(login_url="/login/")
-@require_http_methods(["PATCH", "DELETE"])
+@require_http_methods(["PATCH", "PUT", "DELETE"])
 def kanban_task_detail_api(request, task_id):
     """
-    PATCH: Update a task (specifically status)
+    PATCH: Update task status (for drag-drop)
+    PUT: Update full task details (for edit modal)
     DELETE: Delete a task
     """
     if request.method == 'PATCH':
@@ -659,7 +768,47 @@ def kanban_task_detail_api(request, task_id):
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
 
-    elif request.method == 'DELETE':
+    elif request.method == 'PUT':
+        try:
+            data = json.loads(request.body)
+            
+            task_title = data.get('taskTitle', '').strip()
+            task_description = data.get('taskDescription', '').strip()
+            status_id = data.get('statusID')
+            due_date = data.get('dueDate')
+            assigned_to = data.get('assignedTo')
+            project_id = data.get('projectID')
+            
+            # Validation
+            if not task_title:
+                return JsonResponse({'error': 'Task title is required'}, status=400)
+            
+            if not status_id:
+                return JsonResponse({'error': 'Status is required'}, status=400)
+            
+            if not project_id:
+                return JsonResponse({'error': 'Project is required'}, status=400)
+            
+            # Parse due date if provided
+            due_date_obj = None
+            if due_date:
+                try:
+                    due_date_obj = datetime.strptime(due_date, '%Y-%m-%d').date()
+                except ValueError:
+                    return JsonResponse({'error': 'Invalid date format'}, status=400)
+            
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE task 
+                    SET taskTitle = %s, taskDescription = %s, statusID = %s, dueDate = %s, assignedTo = %s, projectID = %s
+                    WHERE taskID = %s
+                """, [task_title, task_description, status_id, due_date_obj, assigned_to, project_id, task_id])
+            
+            return JsonResponse({'success': True, 'taskID': task_id, 'message': 'Task updated successfully'})
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
         try:
             with connection.cursor() as cursor:
                 cursor.execute("DELETE FROM task WHERE taskID = %s", [task_id])
