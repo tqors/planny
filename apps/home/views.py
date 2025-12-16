@@ -12,6 +12,7 @@ from django.db import connection
 from datetime import datetime, time
 from django.views.decorators.http import require_http_methods
 import json
+from django.core.mail import send_mail
 from apps.home.profile_form import ProfileForm
 
 # ...existing code...
@@ -127,14 +128,13 @@ def generate_tasks_for_project(project_type, project_id, start_date, end_date):
 
 @login_required(login_url="/login/")
 def index(request):
-    context = {'segment': 'index'}
-    return render(request, 'home/index.html', context)
-
+    # Set segment to 'kanban' so the sidebar highlights the Dashboard link
+    context = {'segment': 'kanban'}
+    return render(request, 'home/kanban.html', context)
 
 @login_required(login_url="/login/")
 def kanban(request):
-    # direct view for the kanban page
-    return render(request, 'home/kanban.html')
+    return index(request)
 
 def calculate_project_progress(project_id):
     """
@@ -614,7 +614,7 @@ def pages(request):
     try:
         load_template = request.path.split('/')[-1]
         if load_template in ('', 'index.html', 'index'):
-            return redirect('index')
+            return redirect('home')
         if load_template == 'admin':
             return redirect('/admin/')
 
@@ -649,7 +649,8 @@ def kanban_tasks_api(request):
                         p.projectName,
                         t.assignedTo,
                         u.firstName,
-                        u.lastName
+                        u.lastName,
+                        t.priority
                     FROM task t
                     LEFT JOIN project p ON t.projectID = p.projectID
                     LEFT JOIN developer d ON t.assignedTo = d.developerID
@@ -669,7 +670,8 @@ def kanban_tasks_api(request):
                     'projectID': task[5],
                     'projectName': task[6],
                     'assignedTo': task[7],
-                    'assignedToName': f"{task[8]} {task[9]}" if task[8] and task[9] else None
+                    'assignedToName': f"{task[8]} {task[9]}" if task[8] and task[9] else None,
+                    'priority': task[10]
                 })
             
             return JsonResponse({'tasks': task_list})
@@ -686,6 +688,7 @@ def kanban_tasks_api(request):
             due_date = data.get('dueDate')
             assigned_to = data.get('assignedTo')
             project_id = data.get('projectID')
+            priority = data.get('priority')
             
             # Validation
             if not task_title:
@@ -708,9 +711,9 @@ def kanban_tasks_api(request):
             with connection.cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO task 
-                    (taskTitle, taskDescription, statusID, dueDate, assignedTo, projectID)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, [task_title, task_description, status_id, due_date_obj, assigned_to, project_id])
+                    (taskTitle, taskDescription, statusID, dueDate, assignedTo, projectID, priority)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, [task_title, task_description, status_id, due_date_obj, assigned_to, project_id, priority])
                 
                 # Get the last inserted task ID
                 cursor.execute("SELECT LAST_INSERT_ID()")
@@ -778,6 +781,7 @@ def kanban_task_detail_api(request, task_id):
             due_date = data.get('dueDate')
             assigned_to = data.get('assignedTo')
             project_id = data.get('projectID')
+            priority = data.get('priority')
             
             # Validation
             if not task_title:
@@ -800,9 +804,9 @@ def kanban_task_detail_api(request, task_id):
             with connection.cursor() as cursor:
                 cursor.execute("""
                     UPDATE task 
-                    SET taskTitle = %s, taskDescription = %s, statusID = %s, dueDate = %s, assignedTo = %s, projectID = %s
+                    SET taskTitle = %s, taskDescription = %s, statusID = %s, dueDate = %s, assignedTo = %s, projectID = %s, priority = %s
                     WHERE taskID = %s
-                """, [task_title, task_description, status_id, due_date_obj, assigned_to, project_id, task_id])
+                """, [task_title, task_description, status_id, due_date_obj, assigned_to, project_id, priority, task_id])
             
             return JsonResponse({'success': True, 'taskID': task_id, 'message': 'Task updated successfully'})
         except json.JSONDecodeError:
@@ -1066,6 +1070,38 @@ def user_calendar_events_api(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+@login_required(login_url="/login/")
+def send_invitation(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            email = data.get('email')
+            role = data.get('role')
+            
+            if not email or not role:
+                return JsonResponse({'error': 'Email and Role are required'}, status=400)
+            
+            # Determine registration URL based on role
+            # Note: Ensure these paths match your urls.py configuration for the registration pages
+            if role == 'developer':
+                path = '/register-developer' 
+            elif role == 'client':
+                path = '/register-client'
+            else:
+                return JsonResponse({'error': 'Invalid role'}, status=400)
+                
+            link = request.build_absolute_uri(path)
+            
+            subject = f"Invitation to join Planny as a {role.capitalize()}"
+            message = f"Hello,\n\nYou have been invited to join Planny as a {role.capitalize()}.\n\nPlease register using the following link:\n{link}\n\nBest regards,\nPlanny Team"
+            
+            send_mail(subject, message, None, [email])
+            
+            return JsonResponse({'success': True, 'message': 'Invitation sent successfully'})
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+    return JsonResponse({'error': 'Method not allowed'}, status=405)
+
 
 @login_required(login_url="/login/")
 def user_calendar_event_detail_api(request, event_id):
@@ -1143,6 +1179,3 @@ def user_calendar_event_detail_api(request, event_id):
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
-
-
-

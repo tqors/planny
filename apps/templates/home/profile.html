@@ -16,7 +16,7 @@
           Hello {{ request.user.username }}
         </h1>
         <p class="text-white mt-0 mb-5">This is your profile page. You can see the progress you've made with your work and manage your projects or assigned tasks</p>
-        <a href="#!" class="btn btn-neutral">Edit profile</a>
+        <button type="button" class="btn btn-neutral" data-toggle="modal" data-target="#inviteModal">Invite People</button>
       </div>
     </div>
   </div>
@@ -111,6 +111,41 @@
     </div>
   </div>
 
+  <!-- Invite Modal -->
+  <div class="modal fade" id="inviteModal" tabindex="-1" role="dialog" aria-labelledby="inviteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="inviteModalLabel">Invite People</h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <form id="inviteForm">
+            <div class="form-group">
+              <label for="inviteEmail" class="form-control-label">Email Address</label>
+              <input type="email" class="form-control" id="inviteEmail" required placeholder="name@example.com">
+            </div>
+            <div class="form-group">
+              <label for="inviteRole" class="form-control-label">Role</label>
+              <select class="form-control" id="inviteRole" required>
+                <option value="developer">Developer</option>
+                <option value="client">Client</option>
+              </select>
+            </div>
+            <div class="alert alert-success d-none" id="inviteSuccess">Invitation sent!</div>
+            <div class="alert alert-danger d-none" id="inviteError"></div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-primary" onclick="sendInvitation()">Send Invitation</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   {% include "includes/footer.html" %}
 
 </div>
@@ -118,4 +153,51 @@
 {% endblock content %}
 
 <!-- Specific JS goes HERE --> 
-{% block javascripts %}{% endblock javascripts %}
+{% block javascripts %}
+<script>
+function sendInvitation() {
+    const email = document.getElementById('inviteEmail').value;
+    const role = document.getElementById('inviteRole').value;
+    const successAlert = document.getElementById('inviteSuccess');
+    const errorAlert = document.getElementById('inviteError');
+    
+    successAlert.classList.add('d-none');
+    errorAlert.classList.add('d-none');
+    
+    if(!email) {
+        errorAlert.textContent = "Please enter an email address.";
+        errorAlert.classList.remove('d-none');
+        return;
+    }
+
+    // Note: Ensure '/send-invitation/' is mapped in your urls.py to views.send_invitation
+    fetch('/send-invitation/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({email: email, role: role})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if(data.success) {
+            successAlert.textContent = data.message;
+            successAlert.classList.remove('d-none');
+            setTimeout(() => {
+                $('#inviteModal').modal('hide');
+                document.getElementById('inviteForm').reset();
+                successAlert.classList.add('d-none');
+            }, 2000);
+        } else {
+            errorAlert.textContent = data.error || 'Failed to send invitation';
+            errorAlert.classList.remove('d-none');
+        }
+    })
+    .catch(error => {
+        errorAlert.textContent = 'An error occurred';
+        errorAlert.classList.remove('d-none');
+    });
+}
+</script>
+{% endblock javascripts %}

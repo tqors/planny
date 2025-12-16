@@ -334,8 +334,8 @@
         <div class="header-body">
           <div class="row">
             <div class="col-lg-12 col-md-12">
-              <h1 class="display-2 text-white">Kanban Board</h1>
-              <p class="text-white mt-0 mb-0">Manage your tasks with ease</p>
+              <h1 class="display-2 text-white">Dashboard</h1>
+              <p class="text-white mt-0 mb-0">Kanban Board - Manage your tasks with ease</p>
             </div>
           </div>
         </div>
@@ -399,6 +399,16 @@
               <option value="5">Complete</option>
             </select>
             <span class="error-message" id="statusError"></span>
+          </div>
+
+          <div class="form-group">
+            <label for="taskPriority">Priority</label>
+            <select id="taskPriority" name="taskPriority">
+              <option value="">-- Select Priority --</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
           </div>
 
           <div class="form-group">
@@ -472,6 +482,16 @@
               <option value="5">Complete</option>
             </select>
             <span class="error-message" id="editStatusError"></span>
+          </div>
+
+          <div class="form-group">
+            <label for="editTaskPriority">Priority</label>
+            <select id="editTaskPriority" name="editTaskPriority">
+              <option value="">-- Select Priority --</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
           </div>
 
           <div class="form-group">
@@ -617,6 +637,10 @@
                   <span class="kanban-card-value">${escapeHtml(task.projectName)}</span>
                 </div>
                 <div class="kanban-card-meta-item">
+                  <span class="kanban-card-label">Priority:</span>
+                  <span class="kanban-card-value">${task.priority ? `<span class="badge badge-dot"><i class="${getPriorityColorClass(task.priority)}"></i> ${escapeHtml(task.priority)}</span>` : 'None'}</span>
+                </div>
+                <div class="kanban-card-meta-item">
                   <span class="kanban-card-label">Due:</span>
                   <span class="kanban-card-value">${task.dueDate || 'No date'}</span>
                 </div>
@@ -631,7 +655,7 @@
                     <i class="fas fa-ellipsis-v"></i>
                   </button>
                   <div class="dropdown-menu" style="position: absolute; right: 0; background: white; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); min-width: 120px; z-index: 1000; display: none;">
-                    <a class="dropdown-item" href="#" onclick="openEditTaskModal(${task.taskID}, '${escapeHtml(task.taskTitle).replace(/'/g, "\\'")}', '${escapeHtml((task.taskDescription || '').replace(/'/g, "\\'"))}', ${task.statusID}, '${task.dueDate || ''}', ${task.assignedTo || 'null'}, ${task.projectID}); return false;" style="display: block; padding: 10px 15px; color: #333; text-decoration: none; cursor: pointer; border-bottom: 1px solid #eee;">Edit</a>
+                    <a class="dropdown-item" href="#" onclick="openEditTaskModal(${task.taskID}, '${escapeHtml(task.taskTitle).replace(/'/g, "\\'")}', '${escapeHtml((task.taskDescription || '').replace(/'/g, "\\'"))}', ${task.statusID}, '${task.dueDate || ''}', ${task.assignedTo || 'null'}, ${task.projectID}, '${task.priority || ''}'); return false;" style="display: block; padding: 10px 15px; color: #333; text-decoration: none; cursor: pointer; border-bottom: 1px solid #eee;">Edit</a>
                     <a class="dropdown-item" href="#" onclick="deleteTask(${task.taskID}, '${escapeHtml(task.taskTitle).replace(/'/g, "\\'")}'); return false;" style="display: block; padding: 10px 15px; color: #dc3545; text-decoration: none; cursor: pointer;">Delete</a>
                   </div>
                 </div>
@@ -648,6 +672,13 @@
 
       container.appendChild(column);
     });
+  }
+
+  function getPriorityColorClass(priority) {
+    if (priority === 'High') return 'bg-danger';
+    if (priority === 'Medium') return 'bg-warning';
+    if (priority === 'Low') return 'bg-info';
+    return 'bg-secondary';
   }
 
   // Drag and drop handlers
@@ -736,6 +767,7 @@
     .then(response => response.json())
     .then(data => {
       const projectSelect = document.getElementById('taskProject');
+      const editProjectSelect = document.getElementById('editTaskProject');
       const projectFilter = document.getElementById('projectFilter');
       
       data.projects.forEach(project => {
@@ -744,6 +776,12 @@
         option.value = project.projectID;
         option.textContent = project.projectName;
         projectSelect.appendChild(option);
+        
+        // Add to edit task dropdown
+        const editOption = document.createElement('option');
+        editOption.value = project.projectID;
+        editOption.textContent = project.projectName;
+        editProjectSelect.appendChild(editOption);
         
         // Add to project filter dropdown
         const filterOption = document.createElement('option');
@@ -769,11 +807,18 @@
     .then(response => response.json())
     .then(data => {
       const developerSelect = document.getElementById('taskAssignedTo');
+      const editDeveloperSelect = document.getElementById('editTaskAssignedTo');
       data.developers.forEach(developer => {
         const option = document.createElement('option');
         option.value = developer.developerID;
         option.textContent = developer.firstName + ' ' + developer.lastName;
         developerSelect.appendChild(option);
+        
+        // Add to edit task dropdown
+        const editOption = document.createElement('option');
+        editOption.value = developer.developerID;
+        editOption.textContent = developer.firstName + ' ' + developer.lastName;
+        editDeveloperSelect.appendChild(editOption);
       });
     })
     .catch(error => {
@@ -848,7 +893,7 @@
   }
 
   // Open edit task modal
-  function openEditTaskModal(taskId, taskTitle, taskDescription, statusID, dueDate, assignedTo, projectID) {
+  function openEditTaskModal(taskId, taskTitle, taskDescription, statusID, dueDate, assignedTo, projectID, priority) {
     document.getElementById('editTaskId').value = taskId;
     document.getElementById('editTaskTitle').value = taskTitle;
     document.getElementById('editTaskDescription').value = taskDescription;
@@ -856,6 +901,7 @@
     document.getElementById('editTaskDueDate').value = dueDate;
     document.getElementById('editTaskAssignedTo').value = assignedTo || '';
     document.getElementById('editTaskProject').value = projectID;
+    document.getElementById('editTaskPriority').value = priority || '';
     
     document.getElementById('editTaskOverlay').classList.add('active');
     clearEditErrors();
@@ -889,6 +935,7 @@
     const dueDate = document.getElementById('editTaskDueDate').value;
     const assignedTo = document.getElementById('editTaskAssignedTo').value;
     const project = document.getElementById('editTaskProject').value;
+    const priority = document.getElementById('editTaskPriority').value;
 
     // Validation
     if (!title) {
@@ -919,7 +966,8 @@
         statusID: parseInt(status),
         dueDate: dueDate || null,
         assignedTo: assignedTo ? parseInt(assignedTo) : null,
-        projectID: parseInt(project)
+        projectID: parseInt(project),
+        priority: priority || null
       })
     })
     .then(response => {
@@ -1017,6 +1065,7 @@
     const dueDate = document.getElementById('taskDueDate').value;
     const assignedTo = document.getElementById('taskAssignedTo').value;
     const project = document.getElementById('taskProject').value;
+    const priority = document.getElementById('taskPriority').value;
 
     // Validation
     if (!title) {
@@ -1050,7 +1099,8 @@
         statusID: parseInt(status),
         dueDate: dueDate || null,
         assignedTo: assignedTo ? parseInt(assignedTo) : null,
-        projectID: parseInt(project)
+        projectID: parseInt(project),
+        priority: priority || null
       })
     })
     .then(response => {

@@ -11,9 +11,6 @@ urlpatterns = [
     # The home page
     path('', views.index, name='home'),
     
-    # Kanban page
-    path('kanban/', views.kanban, name='kanban'),
-    
     # Projects page
     path('projects/', views.projects, name='projects'),
     path('tables/', views.tables_view, name='tables'),
@@ -24,6 +21,7 @@ urlpatterns = [
 
     # Profile page
     path('profile/', views.profile, name='profile'),
+    path('send-invitation/', views.send_invitation, name='send_invitation'),
 
     # Kanban API endpoints
     path('api/kanban-tasks/', views.kanban_tasks_api, name='kanban_tasks_api'),
