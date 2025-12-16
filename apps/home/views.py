@@ -228,10 +228,6 @@ def projects(request):
 
 @login_required(login_url="/login/")
 def tables_view(request):
-    """
-    Render the projects table with project data from the database.
-    This ensures `tables.html` receives the `projects` context expected by the template.
-    """
     print("DEBUG: tables_view() called!")  # Check if view is being called
     try:
         with connection.cursor() as cursor:
@@ -323,9 +319,6 @@ def delete_project(request, project_id):
 
 @login_required(login_url="/login/")
 def create_project(request):
-    """
-    Create a new project with Auto-Timeline Generation
-    """
     if request.method == 'POST':
         # 1. Get Form Data
         project_name = request.POST.get('projectName', '').strip()
