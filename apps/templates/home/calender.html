@@ -68,6 +68,8 @@
   .btn-edit-event:hover { background:#ffb300; }
   .btn-delete-event { background:#dc3545; color:#fff; }
   .btn-delete-event:hover { background:#c82333; }
+  .btn-gcal { background:#db4437; color:#fff; }
+  .btn-gcal:hover { background:#c53929; }
   .calendar-event-title { font-weight:600; color:#333; }
   .calendar-event-date { color:#666; font-size:12px; margin-top:4px; }
   .calendar-event-project { color:#888; font-size:11px; margin-top:2px; }
@@ -141,6 +143,14 @@
         <label for="eventEndDate">End Date</label>
         <input type="date" id="eventEndDate">
       </div>
+      <div class="form-group">
+        <label for="eventStartTime">Start Time</label>
+        <input type="time" id="eventStartTime">
+      </div>
+      <div class="form-group">
+        <label for="eventEndTime">End Time</label>
+        <input type="time" id="eventEndTime">
+      </div>
       <div class="modal-buttons">
         <button type="button" class="btn-cancel" onclick="closeEventModal()">Cancel</button>
         <button type="button" class="btn-save" onclick="saveEvent()">Save Event</button>
@@ -150,6 +160,7 @@
 </div>
 
 <script>
+  const csrftoken = '{{ csrf_token }}';
   // Key used in localStorage
   const CAL_KEY = 'planny_user_calendar_src';
   const CAL_TITLE_KEY = 'planny_user_calendar_title';
@@ -224,154 +235,15 @@
     loadCalendar();
   }
 
-  // Event CRUD functions
-  function openEventModal(eventId = null) {
-    currentEditingEventId = eventId;
-    const modal = document.getElementById('eventModal');
-    const header = document.getElementById('eventModalTitle');
-    
-    // Clear form
-    document.getElementById('eventTitle').value = '';
-    document.getElementById('eventDescription').value = '';
-    document.getElementById('eventStartDate').value = '';
-    document.getElementById('eventEndDate').value = '';
-    clearErrorMessages();
-
-    if (eventId) {
-      // Editing mode - fetch event details
-      header.textContent = 'Edit Calendar Event';
-      fetchEventDetails(eventId);
-    } else {
-      // Creating mode
-      header.textContent = 'Create Calendar Event';
-      // Pre-fill with today's date
-      const today = new Date().toISOString().split('T')[0];
-      document.getElementById('eventStartDate').value = today;
-    }
-
-    modal.classList.add('active');
-  }
-
-  function closeEventModal() {
-    document.getElementById('eventModal').classList.remove('active');
-    currentEditingEventId = null;
-    clearErrorMessages();
-  }
-
-  function clearErrorMessages() {
-    document.getElementById('eventTitleError').classList.remove('active');
-    document.getElementById('eventStartDateError').classList.remove('active');
-  }
-
-  function fetchEventDetails(eventId) {
-    fetch(`/api/user-calendar-events/${eventId}/`)
-      .then(r => r.ok ? r.json() : Promise.reject('Failed to load event'))
-      .catch(err => {
-        console.error('Error fetching event:', err);
-        alert('Failed to load event details');
-        closeEventModal();
-      });
-  }
-
-  function saveEvent() {
-    const title = document.getElementById('eventTitle').value.trim();
-    const description = document.getElementById('eventDescription').value.trim();
-    const startDate = document.getElementById('eventStartDate').value;
-    const endDate = document.getElementById('eventEndDate').value;
-
-    clearErrorMessages();
-
-    // Validation
-    if (!title) {
-      document.getElementById('eventTitleError').textContent = 'Event title is required';
-      document.getElementById('eventTitleError').classList.add('active');
-      return;
-    }
-
-    if (!startDate) {
-      document.getElementById('eventStartDateError').textContent = 'Start date is required';
-      document.getElementById('eventStartDateError').classList.add('active');
-      return;
-    }
-
-    const eventData = {
-      eventTitle: title,
-      eventDescription: description,
-      startDate: startDate,
-      endDate: endDate || startDate
-    };
-
-    const method = currentEditingEventId ? 'PATCH' : 'POST';
-    const url = currentEditingEventId 
-      ? `/api/user-calendar-events/${currentEditingEventId}/`
-      : '/api/user-calendar-events/';
-
-    fetch(url, {
-      method: method,
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(eventData)
-    })
-    .then(r => r.ok ? r.json() : Promise.reject('Failed to save event'))
-    .then(data => {
-      closeEventModal();
-      loadCalendar();
-    })
-    .catch(err => {
-      console.error('Error saving event:', err);
-      alert('Failed to save event');
-    });
-  }
-
-  function deleteEvent(eventId) {
-    if (!confirm('Are you sure you want to delete this event?')) return;
-
-    fetch(`/api/user-calendar-events/${eventId}/`, {
-      method: 'DELETE'
-    })
-    .then(r => r.ok ? r.json() : Promise.reject('Failed to delete event'))
-    .then(data => {
-      loadCalendar();
-    })
-    .catch(err => {
-      console.error('Error deleting event:', err);
-      alert('Failed to delete event');
-    });
-  }
-
   function loadCalendar() {
     const src = localStorage.getItem(CAL_KEY);
     const title = localStorage.getItem(CAL_TITLE_KEY) || '';
     const area = document.getElementById('calendarArea');
     area.innerHTML = '';
 
-    // Helper to fetch server-side user calendar events and then render combined list
-    function fetchAndDisplay(serverContainer) {
-      // Fetch user-persisted calendar events
-      fetch('/api/user-calendar-events/')
-        .then(r => r.ok ? r.json() : Promise.reject('Failed to fetch user calendar events'))
-        .then(data => {
-          const userEvents = data && data.events ? data.events : [];
-          // Also fetch auto-generated task events from tasks
-          return fetch('/api/calendar-events/')
-            .then(r => r.ok ? r.json() : Promise.reject('Failed to fetch task events'))
-            .then(taskData => {
-              const taskEvents = taskData && taskData.events ? taskData.events : [];
-              return userEvents.concat(taskEvents);
-            });
-        })
-        .then(allEvents => {
-          displayTaskEvents(serverContainer, allEvents);
-        })
-        .catch(err => {
-          console.warn('Could not load server calendar events:', err);
-          displayTaskEvents(serverContainer, []);
-        });
-    }
-
     if (!src) {
       area.className = 'calendar-placeholder';
       area.textContent = title ? title : 'No calendar configured. Click "Add Calendar" to paste a Google Calendar embed link.';
-      fetchAndDisplay(area);
       return;
     }
 
@@ -385,131 +257,113 @@
 
     area.className = '';
     area.appendChild(iframe);
-    fetchAndDisplay(area);
   }
 
-  function displayTaskEvents(container, serverEvents = []) {
-    const EVENTS_KEY = 'planny_calendar_events';
-    let events = [];
+  function openEventModal(eventId = null) {
+    currentEditingEventId = eventId;
+    const modal = document.getElementById('eventModal');
+    const header = document.getElementById('eventModalTitle');
+    
+    // Clear form
+    document.getElementById('eventTitle').value = '';
+    document.getElementById('eventDescription').value = '';
+    document.getElementById('eventStartDate').value = '';
+    document.getElementById('eventEndDate').value = '';
+    document.getElementById('eventStartTime').value = '';
+    document.getElementById('eventEndTime').value = '';
+    clearErrorMessages();
 
-    // load local events
-    const eventsJson = localStorage.getItem(EVENTS_KEY);
-    if (eventsJson) {
-      try {
-        const local = JSON.parse(eventsJson);
-        if (Array.isArray(local)) events = events.concat(local);
-      } catch (e) {
-        console.warn('Invalid local calendar events JSON', e);
-      }
-    }
+    // Creating mode
+    header.textContent = 'Create Calendar Event';
+    // Pre-fill with today's date
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('eventStartDate').value = today;
 
-    // merge server events
-    if (Array.isArray(serverEvents) && serverEvents.length) {
-      events = events.concat(serverEvents);
-    }
-
-    if (!events || events.length === 0) return;
-
-    try {
-      const eventsSection = document.createElement('div');
-      eventsSection.className = 'calendar-events-section';
-      
-      const headerDiv = document.createElement('div');
-      headerDiv.style.display = 'flex';
-      headerDiv.style.justifyContent = 'space-between';
-      headerDiv.style.alignItems = 'center';
-      headerDiv.style.marginBottom = '10px';
-      
-      const header = document.createElement('div');
-      header.className = 'calendar-events-header';
-      header.textContent = `📋 Upcoming Events (${events.length})`;
-      headerDiv.appendChild(header);
-      
-      const newEventBtn = document.createElement('button');
-      newEventBtn.className = 'btn-new-event';
-      newEventBtn.textContent = '+ New Event';
-      newEventBtn.onclick = () => openEventModal();
-      headerDiv.appendChild(newEventBtn);
-      
-      eventsSection.appendChild(headerDiv);
-
-      // Sort events by date
-      const sortedEvents = events.sort((a, b) => {
-        const dateA = new Date(a.start?.date || a.start?.dateTime || '');
-        const dateB = new Date(b.start?.date || b.start?.dateTime || '');
-        return dateA - dateB;
-      });
-
-      sortedEvents.forEach(event => {
-        const eventDiv = document.createElement('div');
-        eventDiv.className = 'calendar-event-item';
-        
-        const contentDiv = document.createElement('div');
-        contentDiv.className = 'calendar-event-content';
-        
-        const title = document.createElement('div');
-        title.className = 'calendar-event-title';
-        title.textContent = event.summary || 'Untitled Event';
-        contentDiv.appendChild(title);
-
-        if (event.start?.date) {
-          const dateSpan = document.createElement('div');
-          dateSpan.className = 'calendar-event-date';
-          const date = new Date(event.start.date + 'T00:00:00');
-          dateSpan.textContent = `📅 ${date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}`;
-          contentDiv.appendChild(dateSpan);
-        }
-
-        if (event.description) {
-          const desc = document.createElement('div');
-          desc.className = 'calendar-event-project';
-          const projectMatch = event.description.match(/Project:\s*(.+?)(?:\n|$)/);
-          if (projectMatch) {
-            desc.textContent = `📦 ${projectMatch[1]}`;
-            contentDiv.appendChild(desc);
-          } else if (event.description.trim()) {
-            desc.textContent = event.description.substring(0, 50);
-            desc.className = 'calendar-event-project';
-            contentDiv.appendChild(desc);
-          }
-        }
-
-        eventDiv.appendChild(contentDiv);
-
-        // Add action buttons only for user-created events (not task-based)
-        if (event.eventID) {
-          const actionsDiv = document.createElement('div');
-          actionsDiv.className = 'calendar-event-actions';
-
-          const editBtn = document.createElement('button');
-          editBtn.className = 'btn-edit-event';
-          editBtn.textContent = 'Edit';
-          editBtn.onclick = (e) => {
-            e.stopPropagation();
-            openEventModal(event.eventID);
-          };
-          actionsDiv.appendChild(editBtn);
-
-          const deleteBtn = document.createElement('button');
-          deleteBtn.className = 'btn-delete-event';
-          deleteBtn.textContent = 'Delete';
-          deleteBtn.onclick = (e) => {
-            e.stopPropagation();
-            deleteEvent(event.eventID);
-          };
-          actionsDiv.appendChild(deleteBtn);
-
-          eventDiv.appendChild(actionsDiv);
-        }
-
-        eventsSection.appendChild(eventDiv);
-      });
-
-      container.appendChild(eventsSection);
-    } catch (e) {
-      console.error('Error displaying calendar events:', e);
-    }
+    modal.classList.add('active');
   }
+
+  function closeEventModal() {
+    document.getElementById('eventModal').classList.remove('active');
+    currentEditingEventId = null;
+    clearErrorMessages();
+  }
+
+  function clearErrorMessages() {
+    document.querySelectorAll('.error-message').forEach(el => {
+      el.textContent = '';
+      el.classList.remove('active');
+    });
+  }
+
+  function saveEvent() {
+    const title = document.getElementById('eventTitle').value;
+    const description = document.getElementById('eventDescription').value;
+    const startDate = document.getElementById('eventStartDate').value;
+    const endDate = document.getElementById('eventEndDate').value;
+    const startTime = document.getElementById('eventStartTime').value;
+    const endTime = document.getElementById('eventEndTime').value;
+    
+    clearErrorMessages();
+
+    if (!title) {
+        const err = document.getElementById('eventTitleError');
+        if(err) {
+            err.textContent = 'Title is required';
+            err.classList.add('active');
+        }
+        return;
+    }
+    if (!startDate) {
+        const err = document.getElementById('eventStartDateError');
+        if(err) {
+            err.textContent = 'Start Date is required';
+            err.classList.add('active');
+        }
+        return;
+    }
+
+    // Construct ISO strings
+    let startDateTime = startDate;
+    if (startTime) startDateTime += 'T' + startTime + ':00';
+    else startDateTime += 'T09:00:00'; 
+
+    let endDateTime = endDate ? endDate : startDate;
+    if (endTime) endDateTime += 'T' + endTime + ':00';
+    else endDateTime += 'T10:00:00';
+
+    // Get the saved calendar URL/ID from local storage, default to 'primary' if not set
+    const savedCalendar = localStorage.getItem(CAL_KEY);
+
+    const payload = {
+        title: title,
+        description: description,
+        start: startDateTime,
+        end: endDateTime,
+        email: "{{ request.user.email }}", 
+        calendarId: savedCalendar || 'primary'
+    };
+
+    fetch("{% url 'create_calendar_event' %}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrftoken
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Server error');
+        return response.text();
+    })
+    .then(data => {
+        alert(data); 
+        closeEventModal();
+    })
+    .catch(error => {
+        alert('Error creating event: ' + error.message);
+    });
+  }
+
 </script>
       <div class="container-fluid">
         <div class="header-body">

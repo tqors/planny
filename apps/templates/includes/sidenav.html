@@ -36,24 +36,10 @@
             </a>
           </li>
 
-          <!-- <li class="nav-item">
-            <a class="nav-link {% if 'kanban' in segment %} active {% endif %}" href="{% url 'kanban' %}">
-              <i class="ni ni-bullet-list-67 text-default"></i>
-              <span class="nav-link-text">Tasks</span>
-            </a>
-          </li> -->
-
-          <!-- <li class="nav-item">
-            <a class="nav-link {% if 'projects' in segment %} active {% endif %}" href="{% url 'projects' %}">
-              <i class="ni ni-briefcase-24 text-pink"></i>
-              <span class="nav-link-text">Projects</span>
-            </a>
-          </li> -->
-
           <li class="nav-item">
-             <a class="nav-link" href="/calender.html">
+             <a class="nav-link {% if 'calendar' in segment %} active {% endif %}" href="{% url 'calendar' %}">
               <i class="ni ni-calendar-grid-58 text-pink"></i>
-              <span class="nav-link-text">Calender</span>
+              <span class="nav-link-text">Calendar</span>
             </a>
           </li>
 

@@ -170,8 +170,7 @@ function sendInvitation() {
         return;
     }
 
-    // Note: Ensure '/send-invitation/' is mapped in your urls.py to views.send_invitation
-    fetch('/send-invitation/', {
+    fetch("{% url 'send_invitation' %}", {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

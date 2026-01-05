@@ -21,19 +21,19 @@ urlpatterns = [
 
     # Profile page
     path('profile/', views.profile, name='profile'),
-    path('send-invitation/', views.send_invitation, name='send_invitation'),
 
     # Kanban API endpoints
     path('api/kanban-tasks/', views.kanban_tasks_api, name='kanban_tasks_api'),
     path('api/kanban-tasks/<int:task_id>/', views.kanban_task_detail_api, name='kanban_task_detail_api'),
     path('api/projects/', views.projects_api, name='projects_api'),
     path('api/developers/', views.developers_api, name='developers_api'),
-    path('api/calendar-event/', views.calendar_event_api, name='calendar_event_api'),
-    path('api/calendar-events/', views.calendar_events_api, name='calendar_events_api'),
-    
-    # User calendar event endpoints (server-side persistence)
-    path('api/user-calendar-events/', views.user_calendar_events_api, name='user_calendar_events_api'),
-    path('api/user-calendar-events/<int:event_id>/', views.user_calendar_event_detail_api, name='user_calendar_event_detail_api'),
+    path('api/create-calendar-event/', views.create_calendar_event, name='create_calendar_event'),
+    path('api/send-invitation/', views.send_invitation, name='send_invitation'),
+    path('registerclient.html', views.public_registration, {'template_name': 'registerclient.html'}, name='register_client'),
+    path('registerdev.html', views.public_registration, {'template_name': 'registerdev.html'}, name='register_dev'),
+    path('calendar/', views.calendar_view, name='calendar'),
+  
+
 
     path('project/<int:project_id>/timeline/', views.project_timeline, name='project_timeline'),
     path('project/<int:project_id>/edit/', views.edit_project, name='edit_project'),
