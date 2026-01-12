@@ -167,6 +167,17 @@ def index(request):
 def kanban(request):
     return index(request)
 
+def calculate_daysleft(end_date):
+    """
+    Calculate the number of days left until the project's end date.
+    If the end date has passed, return 0.
+    """
+    today = datetime.now().date()
+    if end_date and end_date >= today:
+        delta = end_date - today
+        return delta.days
+    return 0
+
 def calculate_project_progress(project_id):
     """
     Calculates project completion based on weighted task status.
@@ -305,6 +316,7 @@ def tables_view(request):
                 'projectName': proj[1],
                 'startDate': proj[2],
                 'endDate': proj[3],
+                'daysLeft': calculate_daysleft(proj[3]),
                 'projectProgress': dynamic_progress,
                 'clientName': proj[5] if proj[5] else 'No Client',
                 'statusDesc': proj[6] if proj[6] else 'No Status'
@@ -530,33 +542,80 @@ def project_timeline(request, project_id):
             tasks_db = cursor.fetchall()
 
         # 3. Format Data for Google Charts
-        # Google Charts expects: [Task ID, Task Name, Resource(null), Start, End, Duration(null), % Complete, Dependencies(null)]
         gantt_data = []
+        
+        # --- NEW: Calculate Sprint Stats for Progress ---
+        sprint_stats = {}
+        if project[2]: # If project has start date
+            for t in tasks_db:
+                if t[2]: # Task start date
+                    days_from_start = (t[2] - project[2]).days
+                    sprint_num = (days_from_start // 14) + 1
+                    if sprint_num < 1: sprint_num = 1
+                    
+                    if sprint_num not in sprint_stats:
+                        sprint_stats[sprint_num] = {'total': 0, 'sum_progress': 0}
+                    
+                    sprint_stats[sprint_num]['total'] += 1
+                    sprint_stats[sprint_num]['sum_progress'] += t[4]
+
+        # --- NEW: Add Sprint Overview Rows ---
+        if project[2] and project[3]:
+            total_days = (project[3] - project[2]).days
+            if total_days < 1: total_days = 1
+            num_sprints = math.ceil(total_days / 14)
+            if num_sprints < 1: num_sprints = 1
+            
+            for i in range(num_sprints):
+                sprint_num = i + 1
+                s_start = project[2] + timedelta(days=i*14)
+                s_end = s_start + timedelta(days=14)
+                if s_end > project[3]:
+                    s_end = project[3]
+                
+                avg_progress = 0
+                if sprint_num in sprint_stats:
+                    stats = sprint_stats[sprint_num]
+                    if stats['total'] > 0:
+                        avg_progress = stats['sum_progress'] / stats['total']
+
+                gantt_data.append([
+                    f"Sprint_{sprint_num}",
+                    f"Sprint {sprint_num} (Overview)",
+                    f"Sprint {sprint_num}",
+                    s_start.strftime('%Y-%m-%d'),
+                    s_end.strftime('%Y-%m-%d'),
+                    None,
+                    avg_progress,
+                    None
+                ])
+
+        # --- Add Task Rows ---
         for t in tasks_db:
-            # Javascript months are 0-indexed (0=Jan, 11=Dec), so we adjust if necessary in JS, 
-            # but Google Charts usually takes string or Date objects. We'll pass YYYY-MM-DD strings.
             start_str = t[2].strftime('%Y-%m-%d') if t[2] else ''
             end_str = t[3].strftime('%Y-%m-%d') if t[3] else ''
             
-            # Calculate Sprint/Phase for visualization (Agile View)
-            # We assume a standard 14-day sprint cycle relative to project start
             resource_name = 'General'
             if t[2] and project[2]:
                 days_from_start = (t[2] - project[2]).days
                 sprint_num = (days_from_start // 14) + 1
+                if sprint_num < 1: sprint_num = 1
                 resource_name = f"Sprint {sprint_num}"
 
             if start_str and end_str:
                 gantt_data.append([
                     str(t[0]),      # Task ID
                     t[1],           # Task Name
-                    resource_name,  # Resource (Now shows Sprint)
+                    resource_name,  # Resource
                     start_str,      # Start Date
                     end_str,        # End Date
-                    None,           # Duration (calculated auto)
+                    None,           # Duration
                     t[4],           # Percent Complete
                     None            # Dependencies
                 ])
+        
+        # Sort by start date
+        gantt_data.sort(key=lambda x: x[3])
 
         context = {
             'segment': 'projects',
@@ -565,7 +624,8 @@ def project_timeline(request, project_id):
                 'name': project[1],
                 'start': project[2],
                 'end': project[3],
-                'progress': project[4]
+                'progress': project[4],
+                'days_left': calculate_daysleft(project[3])
             },
             'gantt_data': json.dumps(gantt_data) # Pass as JSON to template
         }

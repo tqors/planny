@@ -22,7 +22,8 @@
               </div>
               <p class="mt-3 mb-0 text-muted text-sm">
                 <span class="text-nowrap">Start: {{ project.start }}</span> | 
-                <span class="text-nowrap">Deadline: {{ project.end }}</span>
+                <span class="text-nowrap">Deadline: {{ project.end }}</span> |
+                <span class="text-nowrap text-warning">Days Left: {{ project.days_left }}</span>
               </p>
             </div>
           </div>
@@ -115,14 +116,7 @@
         percentEnabled: true,
         backgroundColor: {
             fill: '#ffffff'
-        },
-        palette: [
-            {
-              "color": "#5e72e4", // Theme Blue
-              "dark": "#233dd2",
-              "light": "#eef0fc"
-            }
-        ]
+        }
       }
     };
 

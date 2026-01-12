@@ -38,6 +38,7 @@
                   <th scope="col" class="sort" data-sort="budget">Client</th>
                   <th scope="col" class="sort" data-sort="status">Status</th>
                   <th scope="col">Deadline</th>
+                  <th scope="col" class="sort" data-sort="daysleft">Days Left</th>
                   <th scope="col" class="sort" data-sort="completion">Completion</th>
                   <th scope="col"></th>
                 </tr>
@@ -67,6 +68,9 @@
                   </td>
                   <td>
                     {{ project.endDate|date:"M d, Y" }}
+                  </td>
+                  <td>
+                    <span class="text-warning font-weight-bold">{{ project.daysLeft }} Days</span>
                   </td>
                   <td>
                     <div class="d-flex align-items-center">
