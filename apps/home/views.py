@@ -12,6 +12,7 @@ from django.db import connection
 from datetime import datetime, time
 from django.views.decorators.http import require_http_methods
 import json
+import math
 from django.core.mail import send_mail
 from apps.home.profile_form import ProfileForm
 import requests
@@ -82,48 +83,76 @@ PROJECT_TYPE_TASKS = {
     ]
 }
 
-def generate_tasks_for_project(project_type, project_id, start_date, end_date):
+def generate_tasks_for_project(project_type, project_id, start_date, end_date, num_sprints_input=None):
     """
     AI function to automatically generate tasks based on project type.
-    Distributes tasks evenly across the project timeline.
+    Agile Update: Distributes tasks into Sprints (approx 2 weeks) with parallel execution.
     """
     # Get task templates for the project type
     task_templates = PROJECT_TYPE_TASKS.get(project_type, PROJECT_TYPE_TASKS['Other'])
+    num_tasks = len(task_templates)
     
-    # Calculate days per task
+    # Calculate total duration
     total_days = (end_date - start_date).days
-    if total_days < 1:
-        total_days = 1
+    if total_days < 1: total_days = 1
     
-    days_per_task = total_days // len(task_templates)
-    if days_per_task < 1:
-        days_per_task = 1
+    if num_sprints_input and num_sprints_input > 0:
+        num_sprints = num_sprints_input
+        sprint_days = total_days // num_sprints
+        if sprint_days < 1: sprint_days = 1
+    else:
+        # Agile Strategy: Target 2-week Sprints (14 days)
+        target_sprint_days = 14
+        
+        # Calculate how many sprints fit in the timeline
+        num_sprints = math.ceil(total_days / target_sprint_days)
+        
+        # Adjust if project is short or very long
+        if num_sprints < 1:
+            num_sprints = 1
+            sprint_days = total_days
+        else:
+            # If we have more sprints than tasks, cap sprints to task count
+            if num_sprints > num_tasks:
+                num_sprints = num_tasks
+            sprint_days = total_days // num_sprints
+
+    # Determine tasks per sprint (round up to ensure all tasks are covered)
+    tasks_per_sprint = math.ceil(num_tasks / num_sprints)
     
-    current_task_start = start_date
+    current_sprint_start = start_date
+    task_idx = 0
     
     with connection.cursor() as cursor:
-        for i, task_title in enumerate(task_templates):
-            # Calculate end date for this task
-            if i == len(task_templates) - 1:
-                current_task_end = end_date
+        for sprint_i in range(num_sprints):
+            # Calculate Sprint End Date
+            if sprint_i == num_sprints - 1:
+                current_sprint_end = end_date
             else:
-                current_task_end = current_task_start + timedelta(days=days_per_task)
+                current_sprint_end = current_sprint_start + timedelta(days=sprint_days - 1)
             
-            # Insert task into database
-            cursor.execute("""
-                INSERT INTO task 
-                (projectID, taskTitle, taskDescription, statusID, startDate, dueDate)
-                VALUES (%s, %s, %s, 1, %s, %s)
-            """, [
+            # Get tasks for this sprint
+            sprint_tasks = task_templates[task_idx : task_idx + tasks_per_sprint]
+            task_idx += tasks_per_sprint
+
+            for task_title in sprint_tasks:
+                cursor.execute("""
+                    INSERT INTO task 
+                    (projectID, taskTitle, taskDescription, statusID, startDate, dueDate)
+                    VALUES (%s, %s, %s, 1, %s, %s)
+                """, [
                 project_id,
                 task_title,
-                f"Auto-generated task for {project_type} project",
-                current_task_start,
-                current_task_end
+                f"Sprint {sprint_i + 1} Task - {project_type}",
+                current_sprint_start,
+                current_sprint_end
             ])
             
-            # Set next task to start the day after this one ends
-            current_task_start = current_task_end + timedelta(days=1)
+            # Next sprint starts the day after this one ends
+            current_sprint_start = current_sprint_end + timedelta(days=1)
+            
+            if task_idx >= num_tasks:
+                break
         
         connection.commit()
 
@@ -205,6 +234,13 @@ def projects(request):
         for proj in projects_data:
             # Using the dynamic calculation method we added previously
             dynamic_progress = calculate_project_progress(proj[0]) 
+
+            # Calculate Est. Sprints (Agile: ~14 days per sprint)
+            sprints_count = 1
+            if proj[2] and proj[3]:
+                days = (proj[3] - proj[2]).days
+                if days > 0:
+                    sprints_count = math.ceil(days / 14)
             
             projects_list.append({
                     'projectID': proj[0],
@@ -213,7 +249,8 @@ def projects(request):
                     'endDate': proj[3],
                     'projectProgress': dynamic_progress, 
                     'clientName': proj[5] if proj[5] else 'No Client',
-                    'statusDesc': proj[6] if proj[6] else 'No Status'
+                    'statusDesc': proj[6] if proj[6] else 'No Status',
+                    'sprintsCount': sprints_count
                 })
 
         context = {
@@ -327,6 +364,7 @@ def create_project(request):
         project_type = request.POST.get('projectType', '').strip()
         start_date_str = request.POST.get('startDate', '')
         end_date_str = request.POST.get('deadline', '')
+        num_sprints_str = request.POST.get('numSprints', '')
         client_id = request.POST.get('client')
         developer_ids = request.POST.getlist('developers') # Get list of selected IDs
         features_text = request.POST.get('mainFeatures', '').strip()
@@ -348,6 +386,13 @@ def create_project(request):
         start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
         end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
         
+        num_sprints_input = None
+        if num_sprints_str and num_sprints_str.strip():
+            try:
+                num_sprints_input = int(num_sprints_str)
+            except ValueError:
+                pass
+
         try:
             with connection.cursor() as cursor:
                 # 2. Insert Project
@@ -372,7 +417,7 @@ def create_project(request):
 
             # 4. AUTO-TIMELINE GENERATION USING AI
             # Always generate tasks based on project type
-            generate_tasks_for_project(project_type, new_project_id, start_date, end_date)
+            generate_tasks_for_project(project_type, new_project_id, start_date, end_date, num_sprints_input)
             
             # Also support custom features if provided
             try:
@@ -382,33 +427,48 @@ def create_project(request):
                         features = [f.strip() for f in features_text.split('\n') if f.strip()]
                         
                         if features:
-                            # Calculate how many days per feature
+                            # AGILE CALCULATION FOR CUSTOM FEATURES
+                            # Distribute features into Sprints (approx 2 weeks)
+                            
                             total_days = (end_date - start_date).days
                             if total_days < 1: total_days = 1
-                            days_per_task = total_days // len(features)
+                            
+                            if num_sprints_input and num_sprints_input > 0:
+                                num_sprints = num_sprints_input
+                                sprint_days = total_days // num_sprints
+                                if sprint_days < 1: sprint_days = 1
+                            else:
+                                target_sprint_days = 14
+                                num_sprints = math.ceil(total_days / target_sprint_days)
+                                
+                                # If we have more sprints than features, cap sprints to feature count to avoid empty sprints
+                                if num_sprints > len(features):
+                                    num_sprints = len(features)
+                                if num_sprints < 1: num_sprints = 1
+                                    
+                                sprint_days = total_days // num_sprints
+                                if sprint_days < 1: sprint_days = 1
+                            
+                            tasks_per_sprint = math.ceil(len(features) / num_sprints)
                             
                             current_task_start = start_date
+                            feature_idx = 0
                             
-                            for i, feature in enumerate(features):
-                                # Calculate end date for this specific task
-                                # The last task always ends on the project deadline to be safe
-                                if i == len(features) - 1:
-                                    current_task_end = end_date
+                            for sprint_i in range(num_sprints):
+                                if sprint_i == num_sprints - 1:
+                                    current_sprint_end = end_date
                                 else:
-                                    current_task_end = current_task_start + timedelta(days=days_per_task)
+                                    current_sprint_end = current_task_start + timedelta(days=sprint_days - 1)
 
-                                # Ensure dates are properly formatted
-                                cursor.execute("""
-                                    INSERT INTO task 
-                                    (projectID, taskTitle, taskDescription, statusID, startDate, dueDate)
-                                    VALUES (%s, %s, %s, 1, %s, %s)
-                                """, [
-                                    new_project_id, 
-                                    feature, 
-                                    "Auto-generated from Project Requirements", 
-                                    current_task_start,  # DATE object
-                                    current_task_end      # DATE object
-                                ])
+                                sprint_features = features[feature_idx : feature_idx + tasks_per_sprint]
+                                feature_idx += tasks_per_sprint
+
+                                for feature in sprint_features:
+                                    cursor.execute("""
+                                        INSERT INTO task 
+                                        (projectID, taskTitle, taskDescription, statusID, startDate, dueDate)
+                                        VALUES (%s, %s, %s, 1, %s, %s)
+                                    """, [new_project_id, feature, f"Sprint {sprint_i + 1} - Custom Feature", current_task_start, current_sprint_end])
                                 
                                 # Set next task to start the day after this one ends
                                 current_task_start = current_task_end + timedelta(days=1)
@@ -478,11 +538,19 @@ def project_timeline(request, project_id):
             start_str = t[2].strftime('%Y-%m-%d') if t[2] else ''
             end_str = t[3].strftime('%Y-%m-%d') if t[3] else ''
             
+            # Calculate Sprint/Phase for visualization (Agile View)
+            # We assume a standard 14-day sprint cycle relative to project start
+            resource_name = 'General'
+            if t[2] and project[2]:
+                days_from_start = (t[2] - project[2]).days
+                sprint_num = (days_from_start // 14) + 1
+                resource_name = f"Sprint {sprint_num}"
+
             if start_str and end_str:
                 gantt_data.append([
                     str(t[0]),      # Task ID
                     t[1],           # Task Name
-                    'Task',         # Resource (Category)
+                    resource_name,  # Resource (Now shows Sprint)
                     start_str,      # Start Date
                     end_str,        # End Date
                     None,           # Duration (calculated auto)
